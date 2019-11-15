@@ -29,7 +29,7 @@ func NewDefaultEffector() *DefaultEffector {
 // MergeEffects merges all matching results collected by the enforcer into a single decision.
 func (e *DefaultEffector) MergeEffects(expr string, effects []Effect, results []float64) (bool, error) {
 	result := false
-	if expr == "some(where (p_eft == allow))" {
+	if expr == "some(where (p.eft == allow))" {
 		result = false
 		for _, eft := range effects {
 			if eft == Allow {
@@ -37,7 +37,7 @@ func (e *DefaultEffector) MergeEffects(expr string, effects []Effect, results []
 				break
 			}
 		}
-	} else if expr == "!some(where (p_eft == deny))" {
+	} else if expr == "!some(where (p.eft == deny))" {
 		result = true
 		for _, eft := range effects {
 			if eft == Deny {
@@ -45,7 +45,7 @@ func (e *DefaultEffector) MergeEffects(expr string, effects []Effect, results []
 				break
 			}
 		}
-	} else if expr == "some(where (p_eft == allow)) && !some(where (p_eft == deny))" {
+	} else if expr == "some(where (p.eft == allow)) && !some(where (p.eft == deny))" {
 		result = false
 		for _, eft := range effects {
 			if eft == Allow {
@@ -55,7 +55,7 @@ func (e *DefaultEffector) MergeEffects(expr string, effects []Effect, results []
 				break
 			}
 		}
-	} else if expr == "priority(p_eft) || deny" {
+	} else if expr == "priority(p.eft) || deny" {
 		result = false
 		for _, eft := range effects {
 			if eft != Indeterminate {

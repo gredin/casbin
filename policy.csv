@@ -1,0 +1,17 @@
+g, user:alice@Company1.com, account:Company1Legal
+g, user:bob@Company1.com, account:Company1Marketing
+g, account:Company1Marketing, corp:Company1
+g, account:Company1Legal, corp:Company1
+
+p, corp:Company1, Gucci, read
+p, account:Company1Legal, Burberry, read
+p, account:Company1Marketing, Calvin Klein, read
+
+g, user:anne@Company2.com, account:Company2Legal
+g, user:bernard@Company2.com, account:Company2Marketing
+g, account:Company2Legal, corp:Company2
+g, account:Company2Marketing, corp:Company2
+
+p, corp:Company2, Perfume, read
+p, account:Company2Legal, Clothes, read
+p, account:Company2Marketing, Cosmetics, read

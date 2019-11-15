@@ -15,19 +15,31 @@
 package casbin
 
 import (
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/checker/decls"
+	"github.com/google/cel-go/common"
+	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/common/types/ref"
+	"github.com/google/cel-go/interpreter/functions"
+	"github.com/google/cel-go/parser"
 	"strings"
 
-	"github.com/Knetic/govaluate"
+	"github.com/hashicorp/go-memdb"
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/ompluscator/dynamic-struct"
+	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
+
 	"github.com/casbin/casbin/v2/effect"
 	"github.com/casbin/casbin/v2/log"
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casbin/casbin/v2/persist"
-	fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
+	"github.com/casbin/casbin/v2/persist/file-adapter"
 	"github.com/casbin/casbin/v2/rbac"
-	defaultrolemanager "github.com/casbin/casbin/v2/rbac/default-role-manager"
-	"github.com/casbin/casbin/v2/util"
+	"github.com/casbin/casbin/v2/rbac/default-role-manager"
 )
 
 // Enforcer is the main interface for authorization enforcement and policy management.
@@ -36,6 +48,11 @@ type Enforcer struct {
 	model     model.Model
 	fm        model.FunctionMap
 	eft       effect.Effector
+
+	flattenEvaluator    cel.Program
+	sqlConditionBuilder func(map[string]interface{}) (string, error)
+	db                  *memdb.MemDB
+	sqliteDB            *sql.DB
 
 	adapter persist.Adapter
 	watcher persist.Watcher
@@ -116,7 +133,339 @@ func NewEnforcer(params ...interface{}) (*Enforcer, error) {
 		return nil, errors.New("invalid parameters for enforcer")
 	}
 
+	db, err := e.BuildDB()
+	if err != nil {
+		return nil, err
+	}
+	e.db = db
+
+	declarations, overloads, err := e.BuildDeclarationsAndOverloads()
+	if err != nil {
+		// TODO
+	}
+
+	env, err := cel.NewEnv(cel.Declarations(declarations...))
+	if err != nil {
+		// TODO
+	}
+
+	rawExpr := e.model["m"]["m"].Value // TODO might be provided by EnforceWithMatcher(matcher string)
+
+	parsedExpr, commonErr := parser.Parse(common.NewTextSource(rawExpr))
+	if commonErr != nil {
+		// TODO
+	}
+
+	flatExpr, err := FlattenExpr(parsedExpr.GetExpr())
+	if err != nil {
+		// TODO
+	}
+
+	//expr2, err := PartiallyEvalExpr(flatExp)(flatObj)
+	rawFlatExpr, err := parser.Unparse(flatExpr, parsedExpr.GetSourceInfo())
+	if err != nil {
+		// TODO
+	}
+
+	checkedAst, err := e.BuildCheckedAst(rawFlatExpr, env)
+	if err != nil {
+		// TODO
+	}
+
+	program, err := env.Program(checkedAst, cel.Functions(overloads...))
+	if err != nil {
+		// TODO
+	}
+	e.flattenEvaluator = program
+
+	e.sqlConditionBuilder = func(flatRequest map[string]interface{}) (string, error) {
+		expr, err := PartiallyEvalExpr(flatExpr)(flatRequest)
+		if err != nil {
+			return "", err
+		}
+
+		return ExprToSQL(expr)
+	}
+
+	/*
+	checkedAst, err := e.BuildCheckedAst(rawExpr, env)
+	if err != nil {
+		// TODO
+	}
+
+	checkedExpr := checkedAst.Expr()
+
+	flattenExpr, err := FlattenExpr(checkedExpr)
+	if err != nil {
+		// TODO
+	}
+
+	rawFlattenExpr, err := cel.AstToString()
+	if err != nil {
+		// TODO
+	}
+
+	flattenAst, err := e.BuildCheckedAst(rawFlattenExpr, env)
+	if err != nil {
+		// TODO
+	}
+	*/
+
+	/*
+	evaluator, err := e.BuildEvaluator()
+	if err != nil {
+		return nil, err
+	}
+	e.evaluator = evaluator
+
+	sqliteDB, err := e.BuildSqliteDB()
+	if err != nil {
+		return nil, err
+	}
+	e.sqliteDB = sqliteDB
+
+	// "SQL query engine"
+	// sqlite in memory
+	// AST => sql query
+
+	txn := db.Txn(false)
+	defer txn.Abort()
+	it, err := txn.Get("policy", "p_sub", "corp:Chanel")
+	if err != nil {
+		// TODO
+	}
+
+	fmt.Println("***")
+	for obj := it.Next(); obj != nil; obj = it.Next() {
+		reader := dynamicstruct.NewReader(obj)
+		println(reader.GetField("Id").Int())
+	}
+	fmt.Println("***")
+	*/
+
 	return e, nil
+}
+
+func (e *Enforcer) BuildSqliteDB() (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	tableName := "policy"
+	sqlColumns := []string{"id INTEGER NOT NULL PRIMARY KEY"}
+	sqlIndexes := []string{}
+	tokens := []string{}
+	questionMarks := []string{}
+	for _, token := range e.model["p"]["p"].Tokens {
+		sqlColumns = append(sqlColumns, fmt.Sprintf("%s TEXT", token))
+		sqlIndexes = append(sqlIndexes, fmt.Sprintf("CREATE INDEX %s_index ON %s (%s)", token, tableName, token))
+		tokens = append(tokens, token)
+		questionMarks = append(questionMarks, "?")
+	}
+
+	sqlStmt := fmt.Sprintf("BEGIN; CREATE TABLE %s (%s); %s; COMMIT;",
+		tableName,
+		strings.Join(sqlColumns, ","),
+		strings.Join(sqlIndexes, ";"))
+
+	_, err = db.Exec(sqlStmt)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	stmt, err := tx.Prepare(fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		tableName,
+		strings.Join(tokens, ","),
+		strings.Join(questionMarks, ",")))
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+	for _, policy := range e.model["p"]["p"].Policy {
+		values := []interface{}{}
+		for _, v := range policy {
+			values = append(values, v)
+		}
+
+		_, err = stmt.Exec(values...)
+		if err != nil {
+			return nil, err
+		}
+	}
+	tx.Commit()
+
+	/*
+	rows, err := db.Query("select id from policy")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		err = rows.Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Println("=>", id)
+	}
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+	*/
+
+	return db, nil
+}
+
+func (e *Enforcer) BuildDB() (*memdb.MemDB, error) {
+	indexes := map[string]*memdb.IndexSchema{}
+	indexes["id"] = &memdb.IndexSchema{
+		Name:    "id",
+		Unique:  true,
+		Indexer: &memdb.IntFieldIndex{Field: "Id"},
+	}
+	for _, token := range e.model["p"]["p"].Tokens {
+		indexes[token] = &memdb.IndexSchema{
+			Name:    token,
+			Unique:  false,
+			Indexer: &memdb.StringFieldIndex{Field: strings.Title(token)},
+		}
+	}
+
+	schema := &memdb.DBSchema{
+		Tables: map[string]*memdb.TableSchema{
+			"policy": &memdb.TableSchema{
+				Name:    "policy",
+				Indexes: indexes,
+			},
+		},
+	}
+
+	db, err := memdb.NewMemDB(schema)
+	if err != nil {
+		return nil, err
+	}
+
+	txn := db.Txn(true)
+
+	builder := dynamicstruct.NewStruct()
+	builder = builder.AddField("Id", 0, `json:"id"`)
+	for _, token := range e.model["p"]["p"].Tokens {
+		builder = builder.AddField(strings.Title(token), "", fmt.Sprintf(`json:"%s"`, token))
+	}
+
+	for i, policy := range e.model["p"]["p"].Policy {
+		p := map[string]interface{}{"id": i}
+		for j, token := range e.model["p"]["p"].Tokens {
+			p[token] = policy[j] // check p and policy have same length
+		}
+
+		data, err := json.Marshal(p)
+		if err != nil {
+			println(err.Error())
+		}
+
+		instance := builder.Build().New()
+		err = json.Unmarshal(data, &instance)
+		if err != nil {
+			println(err.Error())
+		}
+
+		err = txn.Insert("policy", instance)
+		if err != nil {
+			println(err.Error())
+		}
+	}
+
+	txn.Commit()
+
+	return db, nil
+}
+
+func (e *Enforcer) BuildDeclarationsAndOverloads() ([]*exprpb.Decl, []*functions.Overload, error) {
+	declarations := []*exprpb.Decl{}
+	for _, t := range e.model["r"]["r"].Tokens {
+		declarations = append(declarations, decls.NewIdent(t, decls.Any, nil))
+	}
+	for _, t := range e.model["p"]["p"].Tokens {
+		declarations = append(declarations, decls.NewIdent(t, decls.Any, nil))
+	}
+
+	overloads := []*functions.Overload{}
+	if _, ok := e.model["g"]; ok {
+		for key, ast := range e.model["g"] {
+			rm := ast.RM
+
+			declarations = append(declarations, decls.NewFunction(key,
+				decls.NewOverload(fmt.Sprintf("%s_string_string", key),
+					[]*exprpb.Type{decls.String, decls.String},
+					decls.Bool)))
+			declarations = append(declarations, decls.NewFunction(key,
+				decls.NewOverload(fmt.Sprintf("%s_string_string_string", key),
+					[]*exprpb.Type{decls.String, decls.String, decls.String},
+					decls.Bool)))
+
+			overloads = append(overloads, &functions.Overload{
+				Operator: fmt.Sprintf("%s_string_string", key),
+				Binary: func(val1 ref.Val, val2 ref.Val) ref.Val {
+					name1 := val1.(types.String).Value().(string)
+					name2 := val2.(types.String).Value().(string)
+
+					if rm == nil {
+						return types.Bool(name1 == name2)
+					}
+
+					res, _ := rm.HasLink(name1, name2)
+
+					return types.Bool(res)
+				}})
+			overloads = append(overloads, &functions.Overload{
+				Operator: fmt.Sprintf("%s_string_string_string", key),
+				Function: func(values ...ref.Val) ref.Val {
+					name1 := values[0].(types.String).Value().(string)
+					name2 := values[1].(types.String).Value().(string)
+
+					if rm == nil {
+						return types.Bool(name1 == name2)
+					} else if len(values) == 2 {
+						res, _ := rm.HasLink(name1, name2)
+						return types.Bool(res)
+					} else {
+						domain := values[2].(types.String).Value().(string)
+						res, _ := rm.HasLink(name1, name2, domain)
+						return types.Bool(res)
+					}
+				}})
+		}
+	}
+
+	return declarations, overloads, nil
+	//return cel.NewEnv(cel.Declarations(declarations...))
+}
+
+func (e *Enforcer) BuildCheckedAst(rawExpr string, env cel.Env) (cel.Ast, error) {
+	parsed, issues := env.Parse(rawExpr)
+	if issues != nil && issues.Err() != nil {
+		return nil, nil // TODO
+	}
+
+	checked, issues := env.Check(parsed)
+	if issues != nil && issues.Err() != nil {
+		return nil, nil // TODO
+	}
+
+	return checked, nil
+}
+
+func (e *Enforcer) BuildProgram(env cel.Env, ast cel.Ast) (cel.Program, error) {
+
+	return nil, nil
 }
 
 // InitWithFile initializes an enforcer with a model file and a policy file.
@@ -342,14 +691,15 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		return true, nil
 	}
 
-	functions := model.FunctionMap{}
+	/*
+	funcs := model.FunctionMap{}
 	for k, v := range e.fm {
-		functions[k] = v
+		funcs[k] = v
 	}
 	if _, ok := e.model["g"]; ok {
 		for key, ast := range e.model["g"] {
 			rm := ast.RM
-			functions[key] = util.GenerateGFunction(rm)
+			funcs[key] = util.GenerateGFunction(rm)
 		}
 	}
 	var expString string
@@ -358,7 +708,7 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 	} else {
 		expString = matcher
 	}
-	expression, err := govaluate.NewEvaluableExpressionWithFunctions(expString, functions)
+	expression, err := govaluate.NewEvaluableExpressionWithFunctions(expString, funcs)
 	if err != nil {
 		return false, err
 	}
@@ -378,6 +728,53 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 
 		pTokens: pTokens,
 	}
+	*/
+
+	request := map[string]interface{}{
+		"r": map[string]interface{}{},
+	}
+	for j, rval := range rvals {
+		token := e.model["r"]["r"].Tokens[j]
+		request["r"].(map[string]interface{})[token] = rval
+	}
+
+	flatRequest, err := Flatten(request, "", FuncMerger(func(top bool, key, subkey string) string {
+		if top {
+			key += EscapeDots(subkey)
+		} else {
+			key += "_" + EscapeDots(subkey)
+		}
+
+		return key
+	}))
+	if err != nil {
+		// TODO
+	}
+
+	sqlCondition, err := e.sqlConditionBuilder(flatRequest)
+	if err != nil {
+		// TODO
+	}
+
+	policyIds := []int{}
+	rows, err := e.sqliteDB.Query("SELECT id FROM policy WHERE " + sqlCondition)
+	if err != nil {
+		// TODO
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		err = rows.Scan(&id)
+		if err != nil {
+			// TODO
+		}
+
+		policyIds = append(policyIds, id)
+	}
+	err = rows.Err()
+	if err != nil {
+		// TODO
+	}
 
 	var policyEffects []effect.Effect
 	var matcherResults []float64
@@ -391,7 +788,24 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 				len(rvals),
 				rvals)
 		}
-		for i, pvals := range e.model["p"]["p"].Policy {
+
+		effectTokenIndex := -1
+		for j, token := range e.model["p"]["p"].Tokens {
+			if token == "p_eft" {
+				effectTokenIndex = j
+				break
+			}
+		}
+
+		vars := map[string]interface{}{}
+		for j, rval := range rvals {
+			token := e.model["r"]["r"].Tokens[j]
+			vars[token] = rval
+		}
+
+		for _, i := range policyIds {
+			pvals := e.model["p"]["p"].Policy[i]
+
 			// log.LogPrint("Policy Rule: ", pvals)
 			if len(e.model["p"]["p"].Tokens) != len(pvals) {
 				return false, fmt.Errorf(
@@ -401,34 +815,56 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 					pvals)
 			}
 
+			for j, pval := range pvals {
+				token := e.model["p"]["p"].Tokens[j]
+				vars[token] = pval
+			}
+
+			result, _, err := e.flattenEvaluator.Eval(vars)
+
+			/*
 			parameters.pVals = pvals
 
 			result, err := expression.Eval(parameters)
 			// log.LogPrint("Result: ", result)
+			*/
 
 			if err != nil {
 				return false, err
 			}
 
-			switch result := result.(type) {
-			case bool:
-				if !result {
+			switch result.Type() {
+			case types.BoolType:
+				resultVal := result.Value().(bool)
+
+				if !resultVal {
 					policyEffects[i] = effect.Indeterminate
 					continue
 				}
-			case float64:
-				if result == 0 {
+			case types.IntType:
+				resultVal := result.Value().(int64) // see github.com/google/cel-go@v0.3.2/common/types/int.go
+
+				if resultVal == 0 {
 					policyEffects[i] = effect.Indeterminate
 					continue
 				} else {
-					matcherResults[i] = result
+					matcherResults[i] = float64(resultVal)
+				}
+			case types.DoubleType:
+				resultVal := result.Value().(float64) // see github.com/google/cel-go@v0.3.2/common/types/double.go
+
+				if resultVal == 0 {
+					policyEffects[i] = effect.Indeterminate
+					continue
+				} else {
+					matcherResults[i] = resultVal
 				}
 			default:
 				return false, errors.New("matcher result should be bool, int or float")
 			}
 
-			if j, ok := parameters.pTokens["p_eft"]; ok {
-				eft := parameters.pVals[j]
+			if effectTokenIndex >= 0 {
+				eft := pvals[effectTokenIndex]
 				if eft == "allow" {
 					policyEffects[i] = effect.Allow
 				} else if eft == "deny" {
@@ -443,22 +879,31 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 			if e.model["e"]["e"].Value == "priority(p_eft) || deny" {
 				break
 			}
-
 		}
 	} else {
 		policyEffects = make([]effect.Effect, 1)
 		matcherResults = make([]float64, 1)
 
+		/*
 		parameters.pVals = make([]string, len(parameters.pTokens))
 
 		result, err := expression.Eval(parameters)
 		// log.LogPrint("Result: ", result)
+		*/
+
+		vars := map[string]interface{}{}
+		for j, rval := range rvals {
+			token := e.model["r"]["r"].Tokens[j]
+			vars[token] = rval
+		}
+
+		result, _, err := e.evaluator.Eval(vars)
 
 		if err != nil {
 			return false, err
 		}
 
-		if result.(bool) {
+		if result.Value().(bool) {
 			policyEffects[0] = effect.Allow
 		} else {
 			policyEffects[0] = effect.Indeterminate
