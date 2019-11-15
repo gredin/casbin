@@ -16,6 +16,7 @@ package casbin
 
 import (
 	"errors"
+	"github.com/casbin/casbin/v2/model"
 
 	"github.com/casbin/casbin/v2/util"
 )
@@ -110,7 +111,7 @@ func (e *Enforcer) DeletePermissionsForUser(user string) (bool, error) {
 }
 
 // GetPermissionsForUser gets permissions for a user or role.
-func (e *Enforcer) GetPermissionsForUser(user string) [][]string {
+func (e *Enforcer) GetPermissionsForUser(user string) []model.Rule {
 	return e.GetFilteredPolicy(0, user)
 }
 
@@ -164,7 +165,7 @@ func (e *Enforcer) GetImplicitRolesForUser(name string, domain ...string) ([]str
 //
 // GetPermissionsForUser("alice") can only get: [["alice", "data2", "read"]].
 // But GetImplicitPermissionsForUser("alice") will get: [["admin", "data1", "read"], ["alice", "data2", "read"]].
-func (e *Enforcer) GetImplicitPermissionsForUser(user string, domain ...string) ([][]string, error) {
+func (e *Enforcer) GetImplicitPermissionsForUser(user string, domain ...string) ([]model.Rule, error) {
 	roles, err := e.GetImplicitRolesForUser(user, domain...)
 	if err != nil {
 		return nil, err
@@ -179,8 +180,8 @@ func (e *Enforcer) GetImplicitPermissionsForUser(user string, domain ...string) 
 		return nil, errors.New("domain should be 1 parameter")
 	}
 
-	res := [][]string{}
-	permissions := [][]string{}
+	res := []model.Rule{}
+	permissions := []model.Rule{}
 	for _, role := range roles {
 		if withDomain {
 			permissions = e.GetPermissionsForUserInDomain(role, domain[0])
@@ -201,13 +202,19 @@ func (e *Enforcer) GetImplicitPermissionsForUser(user string, domain ...string) 
 //
 // GetImplicitUsersForPermission("data1", "read") will get: ["alice", "bob"].
 // Note: only users will be returned, roles (2nd arg in "g") will be excluded.
-func (e *Enforcer) GetImplicitUsersForPermission(permission ...string) ([]string, error) {
+func (e *Enforcer) GetImplicitUsersForPermission(permission ...string) ([]model.RulePart, error) {
+	// TODO
+	/*
 	subjects := e.GetAllSubjects()
 	roles := e.GetAllRoles()
 
 	users := util.SetSubtract(subjects, roles)
+	*/
 
-	res := []string{}
+	res := []model.RulePart{}
+
+	// TODO
+	/*
 	for _, user := range users {
 		req := util.JoinSliceAny(user, permission...)
 		allowed, err := e.Enforce(req...)
@@ -219,6 +226,7 @@ func (e *Enforcer) GetImplicitUsersForPermission(permission ...string) ([]string
 			res = append(res, user)
 		}
 	}
+	*/
 
 	return res, nil
 }

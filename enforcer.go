@@ -400,6 +400,11 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 
 			parameters.pVals = pvals
 
+			exp, er := govaluate.NewEvaluableExpressionWithFunctions(`g(r_sub, p_sub)`, functions)
+			r, er := exp.Eval(parameters)
+			_= r
+			_ =er
+
 			result, err := expression.Eval(parameters)
 			// log.LogPrint("Result: ", result)
 
@@ -426,9 +431,11 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 
 			if j, ok := parameters.pTokens["p_eft"]; ok {
 				eft := parameters.pVals[j]
-				if eft == "allow" {
+				eftValue, ok := eft["value"] // TODO "value" => constant
+
+				if ok && eftValue == "allow" {
 					policyEffects[i] = effect.Allow
-				} else if eft == "deny" {
+				} else if ok && eftValue == "deny" {
 					policyEffects[i] = effect.Deny
 				} else {
 					policyEffects[i] = effect.Indeterminate
@@ -446,7 +453,7 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		policyEffects = make([]effect.Effect, 1)
 		matcherResults = make([]float64, 1)
 
-		parameters.pVals = make([]string, len(parameters.pTokens))
+		parameters.pVals = make(model.Rule, len(parameters.pTokens))
 
 		result, err := expression.Eval(parameters)
 		// log.LogPrint("Result: ", result)
@@ -503,7 +510,7 @@ type enforceParameters struct {
 	rVals   []interface{}
 
 	pTokens map[string]int
-	pVals   []string
+	pVals   model.Rule
 }
 
 // implements govaluate.Parameters
@@ -518,7 +525,13 @@ func (p enforceParameters) Get(name string) (interface{}, error) {
 		if !ok {
 			return nil, errors.New("No parameter '" + name + "' found.")
 		}
-		return p.pVals[i], nil
+
+		rulePart := p.pVals[i]
+		if v, ok := rulePart["value"]; ok && len(rulePart) == 1 { // TODO "value" => constant
+			return v, nil
+		}
+
+		return rulePart, nil
 	case 'r':
 		i, ok := p.rTokens[name]
 		if !ok {

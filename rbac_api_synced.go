@@ -14,6 +14,8 @@
 
 package casbin
 
+import "github.com/casbin/casbin/v2/model"
+
 // GetRolesForUser gets the roles that a user has.
 func (e *SyncedEnforcer) GetRolesForUser(name string) ([]string, error) {
 	e.m.RLock()
@@ -108,7 +110,7 @@ func (e *SyncedEnforcer) DeletePermissionsForUser(user string) (bool, error) {
 }
 
 // GetPermissionsForUser gets permissions for a user or role.
-func (e *SyncedEnforcer) GetPermissionsForUser(user string) [][]string {
+func (e *SyncedEnforcer) GetPermissionsForUser(user string) []model.Rule {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetPermissionsForUser(user)

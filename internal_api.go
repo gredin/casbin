@@ -14,12 +14,14 @@
 
 package casbin
 
+import "github.com/casbin/casbin/v2/model"
+
 const (
 	notImplemented = "not implemented"
 )
 
 // addPolicy adds a rule to the current policy.
-func (e *Enforcer) addPolicy(sec string, ptype string, rule []string) (bool, error) {
+func (e *Enforcer) addPolicy(sec string, ptype string, rule model.Rule) (bool, error) {
 	ruleAdded := e.model.AddPolicy(sec, ptype, rule)
 	if !ruleAdded {
 		return ruleAdded, nil
@@ -44,7 +46,7 @@ func (e *Enforcer) addPolicy(sec string, ptype string, rule []string) (bool, err
 }
 
 // removePolicy removes a rule from the current policy.
-func (e *Enforcer) removePolicy(sec string, ptype string, rule []string) (bool, error) {
+func (e *Enforcer) removePolicy(sec string, ptype string, rule model.Rule) (bool, error) {
 	ruleRemoved := e.model.RemovePolicy(sec, ptype, rule)
 	if !ruleRemoved {
 		return ruleRemoved, nil

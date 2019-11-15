@@ -38,5 +38,13 @@ func LoadFunctionMap() FunctionMap {
 	fm.AddFunction("regexMatch", util.RegexMatchFunc)
 	fm.AddFunction("ipMatch", util.IPMatchFunc)
 
+	// TODO
+	fm.AddFunction("get", func(args ...interface{}) (interface{}, error) {
+		m := args[0].(RulePart)
+		key := args[1].(string)
+
+		return m[key], nil
+	})
+
 	return fm
 }

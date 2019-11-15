@@ -17,7 +17,6 @@ package model
 import (
 	"github.com/casbin/casbin/v2/log"
 	"github.com/casbin/casbin/v2/rbac"
-	"github.com/casbin/casbin/v2/util"
 )
 
 // BuildRoleLinks initializes the roles in RBAC.
@@ -56,22 +55,26 @@ func (model Model) ClearPolicy() {
 }
 
 // GetPolicy gets all rules in a policy.
-func (model Model) GetPolicy(sec string, ptype string) [][]string {
+func (model Model) GetPolicy(sec string, ptype string) []Rule {
 	return model[sec][ptype].Policy
 }
 
 // GetFilteredPolicy gets rules based on field filters from a policy.
-func (model Model) GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) [][]string {
-	res := [][]string{}
+func (model Model) GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) []Rule {
+	res := []Rule{}
 
 	for _, rule := range model[sec][ptype].Policy {
 		matched := true
+
+		// TODO
+		/*
 		for i, fieldValue := range fieldValues {
 			if fieldValue != "" && rule[fieldIndex+i] != fieldValue {
 				matched = false
 				break
 			}
 		}
+		*/
 
 		if matched {
 			res = append(res, rule)
@@ -82,9 +85,9 @@ func (model Model) GetFilteredPolicy(sec string, ptype string, fieldIndex int, f
 }
 
 // HasPolicy determines whether a model has the specified policy rule.
-func (model Model) HasPolicy(sec string, ptype string, rule []string) bool {
+func (model Model) HasPolicy(sec string, ptype string, rule Rule) bool {
 	for _, r := range model[sec][ptype].Policy {
-		if util.ArrayEquals(rule, r) {
+		if rule.Equals(r) {
 			return true
 		}
 	}
@@ -93,7 +96,7 @@ func (model Model) HasPolicy(sec string, ptype string, rule []string) bool {
 }
 
 // AddPolicy adds a policy rule to the model.
-func (model Model) AddPolicy(sec string, ptype string, rule []string) bool {
+func (model Model) AddPolicy(sec string, ptype string, rule Rule) bool {
 	if !model.HasPolicy(sec, ptype, rule) {
 		model[sec][ptype].Policy = append(model[sec][ptype].Policy, rule)
 		return true
@@ -102,9 +105,9 @@ func (model Model) AddPolicy(sec string, ptype string, rule []string) bool {
 }
 
 // RemovePolicy removes a policy rule from the model.
-func (model Model) RemovePolicy(sec string, ptype string, rule []string) bool {
+func (model Model) RemovePolicy(sec string, ptype string, rule Rule) bool {
 	for i, r := range model[sec][ptype].Policy {
-		if util.ArrayEquals(rule, r) {
+		if rule.Equals(r) {
 			model[sec][ptype].Policy = append(model[sec][ptype].Policy[:i], model[sec][ptype].Policy[i+1:]...)
 			return true
 		}
@@ -115,16 +118,20 @@ func (model Model) RemovePolicy(sec string, ptype string, rule []string) bool {
 
 // RemoveFilteredPolicy removes policy rules based on field filters from the model.
 func (model Model) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) bool {
-	tmp := [][]string{}
+	tmp := []Rule{}
 	res := false
 	for _, rule := range model[sec][ptype].Policy {
 		matched := true
+
+		//TODO
+		/*
 		for i, fieldValue := range fieldValues {
 			if fieldValue != "" && rule[fieldIndex+i] != fieldValue {
 				matched = false
 				break
 			}
 		}
+		*/
 
 		if matched {
 			res = true
@@ -138,27 +145,31 @@ func (model Model) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int
 }
 
 // GetValuesForFieldInPolicy gets all values for a field for all rules in a policy, duplicated values are removed.
-func (model Model) GetValuesForFieldInPolicy(sec string, ptype string, fieldIndex int) []string {
-	values := []string{}
+// TODO here, []RulePart is not a Rule (which is also of type []RulePart)
+func (model Model) GetValuesForFieldInPolicy(sec string, ptype string, fieldIndex int) []RulePart {
+	values := []RulePart{}
 
 	for _, rule := range model[sec][ptype].Policy {
 		values = append(values, rule[fieldIndex])
 	}
 
-	util.ArrayRemoveDuplicates(&values)
+	// TODO write function for deduplicating []RulePart
+	//util.ArrayRemoveDuplicates(&values)
 
 	return values
 }
 
 // GetValuesForFieldInPolicyAllTypes gets all values for a field for all rules in a policy of all ptypes, duplicated values are removed.
-func (model Model) GetValuesForFieldInPolicyAllTypes(sec string, fieldIndex int) []string {
-	values := []string{}
+// TODO here, []RulePart is not a Rule (which is also of type []RulePart)
+func (model Model) GetValuesForFieldInPolicyAllTypes(sec string, fieldIndex int) []RulePart {
+	values := []RulePart{}
 
 	for ptype := range model[sec] {
 		values = append(values, model.GetValuesForFieldInPolicy(sec, ptype, fieldIndex)...)
 	}
 
-	util.ArrayRemoveDuplicates(&values)
+	// TODO write function for deduplicating []RulePart
+	//util.ArrayRemoveDuplicates(&values)
 
 	return values
 }

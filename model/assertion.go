@@ -15,6 +15,7 @@
 package model
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -22,13 +23,60 @@ import (
 	"github.com/casbin/casbin/v2/rbac"
 )
 
+type RulePart map[string]string
+type Rule []RulePart
+
+func (r Rule) String() string {
+	tokens := []string{}
+
+	for _, rulePart := range r {
+		// TODO "value" => constant
+		if v, ok := rulePart["value"] ; ok && len(r) == 1 {
+			tokens = append(tokens, v)
+
+			continue
+		}
+
+		t, err := json.Marshal(rulePart)
+		if err != nil {
+			// TODO
+		}
+		tokens = append(tokens, string(t))
+	}
+
+	// TODO separator "," => constant
+	return strings.Join(tokens, ",")
+}
+
+func (r Rule) Equals(r2 Rule) bool {
+	if len(r) != len(r2) {
+		return false
+	}
+
+	for i, rulePart := range r {
+		rulePart2 := r2[i]
+
+		if len(rulePart) != len(rulePart2) {
+			return false
+		}
+
+		for k, v := range rulePart {
+			if v2, ok := rulePart2[k]; !ok || v != v2 {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
 // Assertion represents an expression in a section of the model.
 // For example: r = sub, obj, act
 type Assertion struct {
 	Key    string
 	Value  string
 	Tokens []string
-	Policy [][]string
+	Policy []Rule
 	RM     rbac.RoleManager
 }
 
@@ -43,18 +91,27 @@ func (ast *Assertion) buildRoleLinks(rm rbac.RoleManager) error {
 			return errors.New("grouping policy elements do not meet role definition")
 		}
 
+		ruleStrings := make([]string, len(rule))
+		for i, rulePart := range rule {
+			v, ok := rulePart["value"] // TODO "value" => constant
+			if !ok {
+				// TODO
+			}
+			ruleStrings[i] = v
+		}
+
 		if count == 2 {
-			err := ast.RM.AddLink(rule[0], rule[1])
+			err := ast.RM.AddLink(ruleStrings[0], ruleStrings[1])
 			if err != nil {
 				return err
 			}
 		} else if count == 3 {
-			err := ast.RM.AddLink(rule[0], rule[1], rule[2])
+			err := ast.RM.AddLink(ruleStrings[0], ruleStrings[1], ruleStrings[2])
 			if err != nil {
 				return err
 			}
 		} else if count == 4 {
-			err := ast.RM.AddLink(rule[0], rule[1], rule[2], rule[3])
+			err := ast.RM.AddLink(ruleStrings[0], ruleStrings[1], ruleStrings[2], ruleStrings[3])
 			if err != nil {
 				return err
 			}

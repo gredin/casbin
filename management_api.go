@@ -14,85 +14,96 @@
 
 package casbin
 
-import "github.com/Knetic/govaluate"
+import (
+	"github.com/Knetic/govaluate"
+	"github.com/casbin/casbin/v2/model"
+)
 
 // GetAllSubjects gets the list of subjects that show up in the current policy.
-func (e *Enforcer) GetAllSubjects() []string {
+// TODO here, []RulePart is not a Rule (which is also of type []RulePart)
+func (e *Enforcer) GetAllSubjects() []model.RulePart {
 	return e.model.GetValuesForFieldInPolicyAllTypes("p", 0)
 }
 
 // GetAllNamedSubjects gets the list of subjects that show up in the current named policy.
-func (e *Enforcer) GetAllNamedSubjects(ptype string) []string {
+// TODO here, []RulePart is not a Rule (which is also of type []RulePart)
+func (e *Enforcer) GetAllNamedSubjects(ptype string) []model.RulePart {
 	return e.model.GetValuesForFieldInPolicy("p", ptype, 0)
 }
 
 // GetAllObjects gets the list of objects that show up in the current policy.
-func (e *Enforcer) GetAllObjects() []string {
+// TODO here, []RulePart is not a Rule (which is also of type []RulePart)
+func (e *Enforcer) GetAllObjects() []model.RulePart {
 	return e.model.GetValuesForFieldInPolicyAllTypes("p", 1)
 }
 
 // GetAllNamedObjects gets the list of objects that show up in the current named policy.
-func (e *Enforcer) GetAllNamedObjects(ptype string) []string {
+// TODO here, []RulePart is not a Rule (which is also of type []RulePart)
+func (e *Enforcer) GetAllNamedObjects(ptype string) []model.RulePart {
 	return e.model.GetValuesForFieldInPolicy("p", ptype, 1)
 }
 
 // GetAllActions gets the list of actions that show up in the current policy.
-func (e *Enforcer) GetAllActions() []string {
+// TODO here, []RulePart is not a Rule (which is also of type []RulePart)
+func (e *Enforcer) GetAllActions() []model.RulePart {
 	return e.model.GetValuesForFieldInPolicyAllTypes("p", 2)
 }
 
 // GetAllNamedActions gets the list of actions that show up in the current named policy.
-func (e *Enforcer) GetAllNamedActions(ptype string) []string {
+// TODO here, []RulePart is not a Rule (which is also of type []RulePart)
+func (e *Enforcer) GetAllNamedActions(ptype string) []model.RulePart {
 	return e.model.GetValuesForFieldInPolicy("p", ptype, 2)
 }
 
 // GetAllRoles gets the list of roles that show up in the current policy.
-func (e *Enforcer) GetAllRoles() []string {
+// TODO here, []RulePart is not a Rule (which is also of type []RulePart)
+func (e *Enforcer) GetAllRoles() []model.RulePart {
 	return e.model.GetValuesForFieldInPolicyAllTypes("g", 1)
 }
 
 // GetAllNamedRoles gets the list of roles that show up in the current named policy.
-func (e *Enforcer) GetAllNamedRoles(ptype string) []string {
+// TODO here, []RulePart is not a Rule (which is also of type []RulePart)
+func (e *Enforcer) GetAllNamedRoles(ptype string) []model.RulePart {
 	return e.model.GetValuesForFieldInPolicy("g", ptype, 1)
 }
 
 // GetPolicy gets all the authorization rules in the policy.
-func (e *Enforcer) GetPolicy() [][]string {
+func (e *Enforcer) GetPolicy() []model.Rule {
 	return e.GetNamedPolicy("p")
 }
 
 // GetFilteredPolicy gets all the authorization rules in the policy, field filters can be specified.
-func (e *Enforcer) GetFilteredPolicy(fieldIndex int, fieldValues ...string) [][]string {
+func (e *Enforcer) GetFilteredPolicy(fieldIndex int, fieldValues ...string) []model.Rule {
 	return e.GetFilteredNamedPolicy("p", fieldIndex, fieldValues...)
 }
 
 // GetNamedPolicy gets all the authorization rules in the named policy.
-func (e *Enforcer) GetNamedPolicy(ptype string) [][]string {
+func (e *Enforcer) GetNamedPolicy(ptype string) []model.Rule {
 	return e.model.GetPolicy("p", ptype)
 }
 
 // GetFilteredNamedPolicy gets all the authorization rules in the named policy, field filters can be specified.
-func (e *Enforcer) GetFilteredNamedPolicy(ptype string, fieldIndex int, fieldValues ...string) [][]string {
+func (e *Enforcer) GetFilteredNamedPolicy(ptype string, fieldIndex int, fieldValues ...string) []model.Rule {
 	return e.model.GetFilteredPolicy("p", ptype, fieldIndex, fieldValues...)
 }
 
 // GetGroupingPolicy gets all the role inheritance rules in the policy.
-func (e *Enforcer) GetGroupingPolicy() [][]string {
+func (e *Enforcer) GetGroupingPolicy() []model.Rule {
 	return e.GetNamedGroupingPolicy("g")
 }
 
 // GetFilteredGroupingPolicy gets all the role inheritance rules in the policy, field filters can be specified.
-func (e *Enforcer) GetFilteredGroupingPolicy(fieldIndex int, fieldValues ...string) [][]string {
+func (e *Enforcer) GetFilteredGroupingPolicy(fieldIndex int, fieldValues ...string) []model.Rule {
 	return e.GetFilteredNamedGroupingPolicy("g", fieldIndex, fieldValues...)
 }
 
 // GetNamedGroupingPolicy gets all the role inheritance rules in the policy.
-func (e *Enforcer) GetNamedGroupingPolicy(ptype string) [][]string {
+func (e *Enforcer) GetNamedGroupingPolicy(ptype string) []model.Rule {
 	return e.model.GetPolicy("g", ptype)
 }
 
 // GetFilteredNamedGroupingPolicy gets all the role inheritance rules in the policy, field filters can be specified.
-func (e *Enforcer) GetFilteredNamedGroupingPolicy(ptype string, fieldIndex int, fieldValues ...string) [][]string {
+func (e *Enforcer) GetFilteredNamedGroupingPolicy(ptype string, fieldIndex int, fieldValues ...string) []model.Rule {
 	return e.model.GetFilteredPolicy("g", ptype, fieldIndex, fieldValues...)
 }
 
@@ -103,16 +114,20 @@ func (e *Enforcer) HasPolicy(params ...interface{}) bool {
 
 // HasNamedPolicy determines whether a named authorization rule exists.
 func (e *Enforcer) HasNamedPolicy(ptype string, params ...interface{}) bool {
-	if strSlice, ok := params[0].([]string); len(params) == 1 && ok {
+	if strSlice, ok := params[0].(model.Rule); len(params) == 1 && ok {
 		return e.model.HasPolicy("p", ptype, strSlice)
 	}
 
+	// TODO
+	return false // delete
+	/*
 	policy := make([]string, 0)
 	for _, param := range params {
 		policy = append(policy, param.(string))
 	}
 
 	return e.model.HasPolicy("p", ptype, policy)
+	*/
 }
 
 // AddPolicy adds an authorization rule to the current policy.
@@ -126,15 +141,20 @@ func (e *Enforcer) AddPolicy(params ...interface{}) (bool, error) {
 // If the rule already exists, the function returns false and the rule will not be added.
 // Otherwise the function returns true by adding the new rule.
 func (e *Enforcer) AddNamedPolicy(ptype string, params ...interface{}) (bool, error) {
-	if strSlice, ok := params[0].([]string); len(params) == 1 && ok {
+	if strSlice, ok := params[0].(model.Rule); len(params) == 1 && ok {
 		return e.addPolicy("p", ptype, strSlice)
 	}
+
+	// TODO
+	return false, nil // delete
+	/*
 	policy := make([]string, 0)
 	for _, param := range params {
 		policy = append(policy, param.(string))
 	}
 
 	return e.addPolicy("p", ptype, policy)
+	*/
 }
 
 // RemovePolicy removes an authorization rule from the current policy.
@@ -149,15 +169,20 @@ func (e *Enforcer) RemoveFilteredPolicy(fieldIndex int, fieldValues ...string) (
 
 // RemoveNamedPolicy removes an authorization rule from the current named policy.
 func (e *Enforcer) RemoveNamedPolicy(ptype string, params ...interface{}) (bool, error) {
-	if strSlice, ok := params[0].([]string); len(params) == 1 && ok {
+	if strSlice, ok := params[0].(model.Rule); len(params) == 1 && ok {
 		return e.removePolicy("p", ptype, strSlice)
 	}
+
+	// TODO
+	return false, nil // delete
+	/*
 	policy := make([]string, 0)
 	for _, param := range params {
 		policy = append(policy, param.(string))
 	}
 
 	return e.removePolicy("p", ptype, policy)
+	*/
 }
 
 // RemoveFilteredNamedPolicy removes an authorization rule from the current named policy, field filters can be specified.
@@ -172,16 +197,20 @@ func (e *Enforcer) HasGroupingPolicy(params ...interface{}) bool {
 
 // HasNamedGroupingPolicy determines whether a named role inheritance rule exists.
 func (e *Enforcer) HasNamedGroupingPolicy(ptype string, params ...interface{}) bool {
-	if strSlice, ok := params[0].([]string); len(params) == 1 && ok {
+	if strSlice, ok := params[0].(model.Rule); len(params) == 1 && ok {
 		return e.model.HasPolicy("g", ptype, strSlice)
 	}
 
+	// TODO
+	return false // delete
+	/*
 	policy := make([]string, 0)
 	for _, param := range params {
 		policy = append(policy, param.(string))
 	}
 
 	return e.model.HasPolicy("g", ptype, policy)
+	*/
 }
 
 // AddGroupingPolicy adds a role inheritance rule to the current policy.
@@ -197,9 +226,11 @@ func (e *Enforcer) AddGroupingPolicy(params ...interface{}) (bool, error) {
 func (e *Enforcer) AddNamedGroupingPolicy(ptype string, params ...interface{}) (bool, error) {
 	var ruleAdded bool
 	var err error
-	if strSlice, ok := params[0].([]string); len(params) == 1 && ok {
+	if strSlice, ok := params[0].(model.Rule); len(params) == 1 && ok {
 		ruleAdded, err = e.addPolicy("g", ptype, strSlice)
-	} else {
+	}
+	// TODO
+	/* else {
 		policy := make([]string, 0)
 		for _, param := range params {
 			policy = append(policy, param.(string))
@@ -207,6 +238,7 @@ func (e *Enforcer) AddNamedGroupingPolicy(ptype string, params ...interface{}) (
 
 		ruleAdded, err = e.addPolicy("g", ptype, policy)
 	}
+	*/
 
 	if e.autoBuildRoleLinks {
 		e.BuildRoleLinks()
@@ -228,9 +260,11 @@ func (e *Enforcer) RemoveFilteredGroupingPolicy(fieldIndex int, fieldValues ...s
 func (e *Enforcer) RemoveNamedGroupingPolicy(ptype string, params ...interface{}) (bool, error) {
 	var ruleRemoved bool
 	var err error
-	if strSlice, ok := params[0].([]string); len(params) == 1 && ok {
+	if strSlice, ok := params[0].(model.Rule); len(params) == 1 && ok {
 		ruleRemoved, err = e.removePolicy("g", ptype, strSlice)
-	} else {
+	}
+	// TODO
+	/*else {
 		policy := make([]string, 0)
 		for _, param := range params {
 			policy = append(policy, param.(string))
@@ -238,6 +272,7 @@ func (e *Enforcer) RemoveNamedGroupingPolicy(ptype string, params ...interface{}
 
 		ruleRemoved, err = e.removePolicy("g", ptype, policy)
 	}
+	*/
 
 	if e.autoBuildRoleLinks {
 		e.BuildRoleLinks()

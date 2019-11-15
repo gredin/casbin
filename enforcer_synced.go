@@ -15,6 +15,7 @@
 package casbin
 
 import (
+	"github.com/casbin/casbin/v2/model"
 	"log"
 	"sync"
 	"time"
@@ -112,112 +113,112 @@ func (e *SyncedEnforcer) Enforce(rvals ...interface{}) (bool, error) {
 }
 
 // GetAllSubjects gets the list of subjects that show up in the current policy.
-func (e *SyncedEnforcer) GetAllSubjects() []string {
+func (e *SyncedEnforcer) GetAllSubjects() []model.RulePart {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetAllSubjects()
 }
 
 // GetAllNamedSubjects gets the list of subjects that show up in the current named policy.
-func (e *SyncedEnforcer) GetAllNamedSubjects(ptype string) []string {
+func (e *SyncedEnforcer) GetAllNamedSubjects(ptype string) []model.RulePart {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetAllNamedSubjects(ptype)
 }
 
 // GetAllObjects gets the list of objects that show up in the current policy.
-func (e *SyncedEnforcer) GetAllObjects() []string {
+func (e *SyncedEnforcer) GetAllObjects() []model.RulePart {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetAllObjects()
 }
 
 // GetAllNamedObjects gets the list of objects that show up in the current named policy.
-func (e *SyncedEnforcer) GetAllNamedObjects(ptype string) []string {
+func (e *SyncedEnforcer) GetAllNamedObjects(ptype string) []model.RulePart {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetAllNamedObjects(ptype)
 }
 
 // GetAllActions gets the list of actions that show up in the current policy.
-func (e *SyncedEnforcer) GetAllActions() []string {
+func (e *SyncedEnforcer) GetAllActions() []model.RulePart {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetAllActions()
 }
 
 // GetAllNamedActions gets the list of actions that show up in the current named policy.
-func (e *SyncedEnforcer) GetAllNamedActions(ptype string) []string {
+func (e *SyncedEnforcer) GetAllNamedActions(ptype string) []model.RulePart {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetAllNamedActions(ptype)
 }
 
 // GetAllRoles gets the list of roles that show up in the current policy.
-func (e *SyncedEnforcer) GetAllRoles() []string {
+func (e *SyncedEnforcer) GetAllRoles() []model.RulePart {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetAllRoles()
 }
 
 // GetAllNamedRoles gets the list of roles that show up in the current named policy.
-func (e *SyncedEnforcer) GetAllNamedRoles(ptype string) []string {
+func (e *SyncedEnforcer) GetAllNamedRoles(ptype string) []model.RulePart {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetAllNamedRoles(ptype)
 }
 
 // GetPolicy gets all the authorization rules in the policy.
-func (e *SyncedEnforcer) GetPolicy() [][]string {
+func (e *SyncedEnforcer) GetPolicy() []model.Rule {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetPolicy()
 }
 
 // GetFilteredPolicy gets all the authorization rules in the policy, field filters can be specified.
-func (e *SyncedEnforcer) GetFilteredPolicy(fieldIndex int, fieldValues ...string) [][]string {
+func (e *SyncedEnforcer) GetFilteredPolicy(fieldIndex int, fieldValues ...string) []model.Rule {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetFilteredPolicy(fieldIndex, fieldValues...)
 }
 
 // GetNamedPolicy gets all the authorization rules in the named policy.
-func (e *SyncedEnforcer) GetNamedPolicy(ptype string) [][]string {
+func (e *SyncedEnforcer) GetNamedPolicy(ptype string) []model.Rule {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetNamedPolicy(ptype)
 }
 
 // GetFilteredNamedPolicy gets all the authorization rules in the named policy, field filters can be specified.
-func (e *SyncedEnforcer) GetFilteredNamedPolicy(ptype string, fieldIndex int, fieldValues ...string) [][]string {
+func (e *SyncedEnforcer) GetFilteredNamedPolicy(ptype string, fieldIndex int, fieldValues ...string) []model.Rule {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetFilteredNamedPolicy(ptype, fieldIndex, fieldValues...)
 }
 
 // GetGroupingPolicy gets all the role inheritance rules in the policy.
-func (e *SyncedEnforcer) GetGroupingPolicy() [][]string {
+func (e *SyncedEnforcer) GetGroupingPolicy() []model.Rule {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetGroupingPolicy()
 }
 
 // GetFilteredGroupingPolicy gets all the role inheritance rules in the policy, field filters can be specified.
-func (e *SyncedEnforcer) GetFilteredGroupingPolicy(fieldIndex int, fieldValues ...string) [][]string {
+func (e *SyncedEnforcer) GetFilteredGroupingPolicy(fieldIndex int, fieldValues ...string) []model.Rule {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetFilteredGroupingPolicy(fieldIndex, fieldValues...)
 }
 
 // GetNamedGroupingPolicy gets all the role inheritance rules in the policy.
-func (e *SyncedEnforcer) GetNamedGroupingPolicy(ptype string) [][]string {
+func (e *SyncedEnforcer) GetNamedGroupingPolicy(ptype string) []model.Rule {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetNamedGroupingPolicy(ptype)
 }
 
 // GetFilteredNamedGroupingPolicy gets all the role inheritance rules in the policy, field filters can be specified.
-func (e *SyncedEnforcer) GetFilteredNamedGroupingPolicy(ptype string, fieldIndex int, fieldValues ...string) [][]string {
+func (e *SyncedEnforcer) GetFilteredNamedGroupingPolicy(ptype string, fieldIndex int, fieldValues ...string) []model.Rule {
 	e.m.RLock()
 	defer e.m.RUnlock()
 	return e.Enforcer.GetFilteredNamedGroupingPolicy(ptype, fieldIndex, fieldValues...)

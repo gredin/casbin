@@ -23,7 +23,6 @@ import (
 
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casbin/casbin/v2/persist"
-	"github.com/casbin/casbin/v2/util"
 )
 
 // Adapter is the file adapter for Casbin.
@@ -57,7 +56,7 @@ func (a *Adapter) SavePolicy(model model.Model) error {
 	for ptype, ast := range model["p"] {
 		for _, rule := range ast.Policy {
 			tmp.WriteString(ptype + ", ")
-			tmp.WriteString(util.ArrayToString(rule))
+			tmp.WriteString(rule.String())
 			tmp.WriteString("\n")
 		}
 	}
@@ -65,7 +64,7 @@ func (a *Adapter) SavePolicy(model model.Model) error {
 	for ptype, ast := range model["g"] {
 		for _, rule := range ast.Policy {
 			tmp.WriteString(ptype + ", ")
-			tmp.WriteString(util.ArrayToString(rule))
+			tmp.WriteString(rule.String())
 			tmp.WriteString("\n")
 		}
 	}
@@ -109,12 +108,12 @@ func (a *Adapter) savePolicyFile(text string) error {
 }
 
 // AddPolicy adds a policy rule to the storage.
-func (a *Adapter) AddPolicy(sec string, ptype string, rule []string) error {
+func (a *Adapter) AddPolicy(sec string, ptype string, rule model.Rule) error {
 	return errors.New("not implemented")
 }
 
 // RemovePolicy removes a policy rule from the storage.
-func (a *Adapter) RemovePolicy(sec string, ptype string, rule []string) error {
+func (a *Adapter) RemovePolicy(sec string, ptype string, rule model.Rule) error {
 	return errors.New("not implemented")
 }
 

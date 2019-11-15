@@ -15,25 +15,75 @@
 package persist
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/casbin/casbin/v2/model"
 )
 
+func SplitLine(line string) []string {
+	tokens := []string{}
+
+	cursor := 0
+	for i := 0; i < len(line); i++ {
+		if line[i] == ',' {
+			tokens = append(tokens, line[cursor:i])
+
+			cursor = i+1
+
+			continue
+		}
+
+		if line[i] == '{' {
+			cursor = i
+
+			for i < len(line) {
+				if line[i] == '}' {
+					break
+				}
+
+				i++
+			}
+		}
+	}
+
+	if cursor < len(line) {
+		tokens = append(tokens, line[cursor:])
+	}
+
+	return tokens
+}
+
 // LoadPolicyLine loads a text line as a policy rule to model.
-func LoadPolicyLine(line string, model model.Model) {
+func LoadPolicyLine(line string, mod model.Model) {
 	if line == "" || strings.HasPrefix(line, "#") {
 		return
 	}
 
-	tokens := strings.Split(line, ",")
-	for i := 0; i < len(tokens); i++ {
-		tokens[i] = strings.TrimSpace(tokens[i])
+	tokens := SplitLine(line)
+	rule := model.Rule{}
+	for _, t := range tokens[1:] {
+		token := strings.TrimSpace(t)
+
+		if !(token[0] == '{' && token[len(token)-1] == '}') {
+			// TODO "value" => constant
+			rule = append(rule, map[string]string{"value": token})
+
+			continue
+		}
+
+		rulePart := map[string]string{}
+		err := json.Unmarshal([]byte(token), &rulePart)
+		if err != nil {
+			// TODO
+			println(err.Error())
+		}
+		rule = append(rule, rulePart)
 	}
 
 	key := tokens[0]
 	sec := key[:1]
-	model[sec][key].Policy = append(model[sec][key].Policy, tokens[1:])
+	mod[sec][key].Policy = append(mod[sec][key].Policy, rule)
 }
 
 // Adapter is the interface for Casbin adapters.
@@ -45,10 +95,10 @@ type Adapter interface {
 
 	// AddPolicy adds a policy rule to the storage.
 	// This is part of the Auto-Save feature.
-	AddPolicy(sec string, ptype string, rule []string) error
+	AddPolicy(sec string, ptype string, rule model.Rule) error
 	// RemovePolicy removes a policy rule from the storage.
 	// This is part of the Auto-Save feature.
-	RemovePolicy(sec string, ptype string, rule []string) error
+	RemovePolicy(sec string, ptype string, rule model.Rule) error
 	// RemoveFilteredPolicy removes policy rules that match the filter from the storage.
 	// This is part of the Auto-Save feature.
 	RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) error
