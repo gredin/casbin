@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/casbin/casbin/v2/util"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/checker/decls"
 	"github.com/google/cel-go/common"
@@ -139,6 +140,12 @@ func NewEnforcer(params ...interface{}) (*Enforcer, error) {
 	}
 	e.db = db
 
+	sqliteDB, err := e.BuildSqliteDB()
+	if err != nil {
+		return nil, err
+	}
+	e.sqliteDB = sqliteDB
+
 	declarations, overloads, err := e.BuildDeclarationsAndOverloads()
 	if err != nil {
 		// TODO
@@ -151,8 +158,11 @@ func NewEnforcer(params ...interface{}) (*Enforcer, error) {
 
 	rawExpr := e.model["m"]["m"].Value // TODO might be provided by EnforceWithMatcher(matcher string)
 
-	parsedExpr, commonErr := parser.Parse(common.NewTextSource(rawExpr))
-	if commonErr != nil {
+	parsedExpr, errs := parser.Parse(common.NewTextSource(rawExpr))
+	if len(errs.GetErrors()) != 0 {
+		s := errs.ToDisplayString()
+		_ = s
+		println(errs.ToDisplayString())
 		// TODO
 	}
 
@@ -218,11 +228,7 @@ func NewEnforcer(params ...interface{}) (*Enforcer, error) {
 	}
 	e.evaluator = evaluator
 
-	sqliteDB, err := e.BuildSqliteDB()
-	if err != nil {
-		return nil, err
-	}
-	e.sqliteDB = sqliteDB
+
 
 	// "SQL query engine"
 	// sqlite in memory
@@ -251,17 +257,17 @@ func (e *Enforcer) BuildSqliteDB() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	//defer db.Close()
 
 	tableName := "policy"
 	sqlColumns := []string{"id INTEGER NOT NULL PRIMARY KEY"}
 	sqlIndexes := []string{}
-	tokens := []string{}
-	questionMarks := []string{}
+	fields := []string{"id"}
+	questionMarks := []string{"?"}
 	for _, token := range e.model["p"]["p"].Tokens {
 		sqlColumns = append(sqlColumns, fmt.Sprintf("%s TEXT", token))
 		sqlIndexes = append(sqlIndexes, fmt.Sprintf("CREATE INDEX %s_index ON %s (%s)", token, tableName, token))
-		tokens = append(tokens, token)
+		fields = append(fields, token)
 		questionMarks = append(questionMarks, "?")
 	}
 
@@ -281,14 +287,14 @@ func (e *Enforcer) BuildSqliteDB() (*sql.DB, error) {
 	}
 	stmt, err := tx.Prepare(fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 		tableName,
-		strings.Join(tokens, ","),
+		strings.Join(fields, ","),
 		strings.Join(questionMarks, ",")))
 	if err != nil {
 		return nil, err
 	}
 	defer stmt.Close()
-	for _, policy := range e.model["p"]["p"].Policy {
-		values := []interface{}{}
+	for i, policy := range e.model["p"]["p"].Policy {
+		values := []interface{}{i}
 		for _, v := range policy {
 			values = append(values, v)
 		}
@@ -730,19 +736,17 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 	}
 	*/
 
-	request := map[string]interface{}{
-		"r": map[string]interface{}{},
-	}
+	request := map[string]interface{}{}
 	for j, rval := range rvals {
 		token := e.model["r"]["r"].Tokens[j]
-		request["r"].(map[string]interface{})[token] = rval
+		request[token] = rval
 	}
 
 	flatRequest, err := Flatten(request, "", FuncMerger(func(top bool, key, subkey string) string {
 		if top {
-			key += EscapeDots(subkey)
+			key += subkey // TODO pas besoin de EscapeDots car request = { r_sub => ..., r_obj => ... }
 		} else {
-			key += "_" + EscapeDots(subkey)
+			key += "_" + util.EscapeDots(subkey)
 		}
 
 		return key
@@ -779,8 +783,10 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 	var policyEffects []effect.Effect
 	var matcherResults []float64
 	if policyLen := len(e.model["p"]["p"].Policy); policyLen != 0 {
-		policyEffects = make([]effect.Effect, policyLen)
-		matcherResults = make([]float64, policyLen)
+		policyEffects = make([]effect.Effect, len(policyIds)+1)
+		matcherResults = make([]float64, len(policyIds)+1)
+		policyEffects[len(policyIds)] = effect.Indeterminate // TODO explain why
+
 		if len(e.model["r"]["r"].Tokens) != len(rvals) {
 			return false, fmt.Errorf(
 				"invalid request size: expected %d, got %d, rvals: %v",
@@ -803,8 +809,8 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 			vars[token] = rval
 		}
 
-		for _, i := range policyIds {
-			pvals := e.model["p"]["p"].Policy[i]
+		for i, policyId := range policyIds {
+			pvals := e.model["p"]["p"].Policy[policyId]
 
 			// log.LogPrint("Policy Rule: ", pvals)
 			if len(e.model["p"]["p"].Tokens) != len(pvals) {
@@ -876,7 +882,7 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 				policyEffects[i] = effect.Allow
 			}
 
-			if e.model["e"]["e"].Value == "priority(p_eft) || deny" {
+			if e.model["e"]["e"].Value == effect.Priority {
 				break
 			}
 		}
@@ -891,13 +897,14 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		// log.LogPrint("Result: ", result)
 		*/
 
+		// TODO code duplication
 		vars := map[string]interface{}{}
 		for j, rval := range rvals {
 			token := e.model["r"]["r"].Tokens[j]
 			vars[token] = rval
 		}
 
-		result, _, err := e.evaluator.Eval(vars)
+		result, _, err := e.flattenEvaluator.Eval(vars)
 
 		if err != nil {
 			return false, err

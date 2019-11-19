@@ -20,6 +20,16 @@ import (
 	"strings"
 )
 
+func EscapeDots(s string) string {
+	var r1 = regexp.MustCompile(`(_)`)
+	s = r1.ReplaceAllString(s, `$1$1`)
+
+	var r2 = regexp.MustCompile(`(\.{2,})`)
+	s = r2.ReplaceAllString(s, `$1$1`)
+
+	return strings.Replace(s, ".", "_", -1)
+}
+
 // EscapeAssertion escapes the dots in the assertion, because the expression evaluation doesn't support such variable names.
 func EscapeAssertion(s string) string {
 	//Replace the first dot, because it can't be recognized by the regexp.

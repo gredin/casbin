@@ -15,7 +15,6 @@
 package model
 
 import (
-	"github.com/casbin/casbin/v2"
 	"strconv"
 	"strings"
 
@@ -56,7 +55,7 @@ func (model Model) AddDef(sec string, key string, value string) bool {
 	if sec == "r" || sec == "p" {
 		ast.Tokens = strings.Split(ast.Value, ", ")
 		for i := range ast.Tokens {
-			ast.Tokens[i] = key + "_" + casbin.EscapeDots(ast.Tokens[i])
+			ast.Tokens[i] = key + "_" + util.EscapeDots(ast.Tokens[i])
 		}
 	} else {
 		ast.Value = util.RemoveComments(ast.Value) // TODO util.EscapeAssertion() not used anymore

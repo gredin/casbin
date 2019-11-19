@@ -62,15 +62,15 @@ func ExprToSQL(expr *exprpb.Expr) (string, error) {
 				return left, nil
 			}
 
-			return left + " && " + right, nil
+			return left + " AND " + right, nil
 		case operators.LogicalOr:
 			if left == AllCondition || right == AllCondition {
 				return AllCondition, nil
 			}
 
-			return left + " || " + right, nil
+			return left + " OR " + right, nil
 		case operators.Equals:
-			return left + " == " + right, nil
+			return left + " = " + right, nil
 		//case operators.LogicalNot:
 		//	return NoneCondition
 		}

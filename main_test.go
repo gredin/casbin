@@ -2,27 +2,17 @@ package casbin
 
 import (
 	"encoding/json"
-	_"errors"
+	_ "errors"
 	"fmt"
 	"github.com/Knetic/govaluate"
-	"github.com/google/cel-go/common"
-	_"github.com/google/cel-go/common/operators"
+	"github.com/casbin/casbin/v2/util"
 	_ "github.com/google/cel-go/common/operators"
-	"github.com/google/cel-go/common/types"
-	"github.com/google/cel-go/common/types/ref"
-	"github.com/google/cel-go/interpreter/functions"
-	"github.com/google/cel-go/parser"
 	_ "github.com/jeremywohl/flatten"
-	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
-	"log"
 	_ "reflect"
 	"testing"
 
 	"strconv"
 	"time"
-
-	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/checker/decls"
 )
 
 func IsTimeInRange(t time.Time, yearMin int, yearMax int) bool {
@@ -56,14 +46,13 @@ func EscapeMerger(top bool, prefix, subkey string) string {
 	key := prefix
 
 	if top {
-		key += EscapeDots(subkey)
+		key += util.EscapeDots(subkey)
 	} else {
-		key += "_" + EscapeDots(subkey)
+		key += "_" + util.EscapeDots(subkey)
 	}
 
 	return key
 }
-
 
 func FlattenStruct(o interface{}, prefix string) (map[string]interface{}, error) {
 	b, err := json.Marshal(o)
@@ -77,7 +66,7 @@ func FlattenStruct(o interface{}, prefix string) (map[string]interface{}, error)
 		println(err.Error())
 	}
 
-	return Flatten(nested, prefix + "_", FuncMerger{F: EscapeMerger})
+	return Flatten(nested, prefix+"_", FuncMerger(EscapeMerger))
 
 	/*
 	reflectType := reflect.TypeOf(s).Elem()
@@ -106,6 +95,14 @@ func FlattenStruct(o interface{}, prefix string) (map[string]interface{}, error)
 }
 
 func Test_Main(t *testing.T) {
+	exp, _ := govaluate.NewEvaluableExpression("a == b")
+	r, _ := exp.Evaluate(map[string]interface{}{
+		"a": "1",
+		"b": "1",
+	})
+
+	_ = r
+	/*
 	obj := struct {
 		A_b map[string]string
 	}{
@@ -118,9 +115,9 @@ func Test_Main(t *testing.T) {
 	}
 	_ = f
 
-	println(EscapeDots("a.b"))
-	println(EscapeDots("a.b.c"))
-	println(EscapeDots("a_b.c.d_e"))
+	println(util.EscapeDots("a.b"))
+	println(util.EscapeDots("a.b.c"))
+	println(util.EscapeDots("a_b.c.d_e"))
 
 	// go test -bench BenchmarkRBACModelMedium -benchmem -run=^$
 
@@ -224,6 +221,7 @@ func Test_Main(t *testing.T) {
 	_ = tokens
 
 	//govaluate.
+	*/
 
 	enforcer, err := NewEnforcer("model.conf", "policy.csv")
 
@@ -246,9 +244,7 @@ func Test_Main(t *testing.T) {
 		"corp:Company2",
 	}
 
-	objects := []string{
-		"Gucci", "Calvin Klein", "Burberry", "Perfume", "Clothes", "Cosmetics",
-	}
+	objects := []string{"Gucci", "Calvin Klein", "Burberry", "Perfume", "Clothes", "Cosmetics"}
 
 	for _, o := range objects {
 		fmt.Println(o)

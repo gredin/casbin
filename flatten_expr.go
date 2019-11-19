@@ -2,6 +2,7 @@ package casbin
 
 import (
 	"errors"
+	"github.com/casbin/casbin/v2/util"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
@@ -16,7 +17,7 @@ func FlattenExpr(expr *exprpb.Expr) (*exprpb.Expr, error) {
 			Id: expr.Id,
 			ExprKind: &exprpb.Expr_IdentExpr{
 				IdentExpr: &exprpb.Expr_Ident{
-					Name: EscapeDots(e.Name),
+					Name: util.EscapeDots(e.Name),
 				},
 			},
 		}, nil
@@ -91,7 +92,7 @@ func flattenSelectExpr(exprSelect *exprpb.Expr_Select) (*exprpb.Expr_IdentExpr, 
 	case *exprpb.Expr_IdentExpr:
 		return &exprpb.Expr_IdentExpr{
 			IdentExpr: &exprpb.Expr_Ident{
-				Name: EscapeDots(exprSelect.Operand.GetIdentExpr().Name) + "_" + EscapeDots(exprSelect.Field),
+				Name: util.EscapeDots(exprSelect.Operand.GetIdentExpr().Name) + "_" + util.EscapeDots(exprSelect.Field),
 			},
 		}, nil
 	case *exprpb.Expr_SelectExpr:
@@ -102,7 +103,7 @@ func flattenSelectExpr(exprSelect *exprpb.Expr_Select) (*exprpb.Expr_IdentExpr, 
 
 		return &exprpb.Expr_IdentExpr{
 			IdentExpr: &exprpb.Expr_Ident{
-				Name: identExpr.IdentExpr.Name + "_" + EscapeDots(exprSelect.Field),
+				Name: identExpr.IdentExpr.Name + "_" + util.EscapeDots(exprSelect.Field),
 			},
 		}, nil
 	default:

@@ -16,6 +16,13 @@ package effect
 
 import "errors"
 
+const (
+	AllowOverride = "some(where (p.eft == allow))"
+	DenyOverride  = "!some(where (p.eft == deny))"
+	AllowAndDeny  = "some(where (p.eft == allow)) && !some(where (p.eft == deny))"
+	Priority      = "priority(p.eft) || deny"
+)
+
 // DefaultEffector is default effector for Casbin.
 type DefaultEffector struct {
 }
@@ -29,7 +36,7 @@ func NewDefaultEffector() *DefaultEffector {
 // MergeEffects merges all matching results collected by the enforcer into a single decision.
 func (e *DefaultEffector) MergeEffects(expr string, effects []Effect, results []float64) (bool, error) {
 	result := false
-	if expr == "some(where (p.eft == allow))" {
+	if expr == AllowOverride {
 		result = false
 		for _, eft := range effects {
 			if eft == Allow {
@@ -37,7 +44,7 @@ func (e *DefaultEffector) MergeEffects(expr string, effects []Effect, results []
 				break
 			}
 		}
-	} else if expr == "!some(where (p.eft == deny))" {
+	} else if expr == DenyOverride {
 		result = true
 		for _, eft := range effects {
 			if eft == Deny {
@@ -45,7 +52,7 @@ func (e *DefaultEffector) MergeEffects(expr string, effects []Effect, results []
 				break
 			}
 		}
-	} else if expr == "some(where (p.eft == allow)) && !some(where (p.eft == deny))" {
+	} else if expr == AllowAndDeny {
 		result = false
 		for _, eft := range effects {
 			if eft == Allow {
@@ -55,7 +62,7 @@ func (e *DefaultEffector) MergeEffects(expr string, effects []Effect, results []
 				break
 			}
 		}
-	} else if expr == "priority(p.eft) || deny" {
+	} else if expr == Priority {
 		result = false
 		for _, eft := range effects {
 			if eft != Indeterminate {
