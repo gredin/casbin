@@ -94,7 +94,7 @@ func FlattenStruct(o interface{}, prefix string) (map[string]interface{}, error)
 	*/
 }
 
-func Test_Main(t *testing.T) {
+func _Test_Main(t *testing.T) {
 	exp, _ := govaluate.NewEvaluableExpression("a == b")
 	r, _ := exp.Evaluate(map[string]interface{}{
 		"a": "1",

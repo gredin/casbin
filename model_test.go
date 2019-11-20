@@ -15,12 +15,19 @@
 package casbin
 
 import (
+	"github.com/casbin/casbin/v2/model"
+	"github.com/google/cel-go/checker/decls"
+	"github.com/google/cel-go/common/types/ref"
+	"github.com/google/cel-go/interpreter/functions"
 	"testing"
 
 	"github.com/casbin/casbin/v2/persist/file-adapter"
 	"github.com/casbin/casbin/v2/rbac"
 	"github.com/casbin/casbin/v2/rbac/default-role-manager"
 	"github.com/casbin/casbin/v2/util"
+
+	"github.com/google/cel-go/common/types"
+	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
 func testEnforce(t *testing.T, e *Enforcer, sub string, obj interface{}, act string, res bool) {
@@ -425,17 +432,22 @@ func CustomFunction(key1 string, key2 string) bool {
 	}
 }
 
-func CustomFunctionWrapper(args ...interface{}) (interface{}, error) {
-	key1 := args[0].(string)
-	key2 := args[1].(string)
-
-	return bool(CustomFunction(key1, key2)), nil
-}
-
 func TestKeyMatchCustomModel(t *testing.T) {
 	e, _ := NewEnforcer("examples/keymatch_custom_model.conf", "examples/keymatch2_policy.csv")
 
-	e.AddFunction("keyMatchCustom", CustomFunctionWrapper)
+	e.AddFunction(model.Function{
+		Declaration: decls.NewFunction("keyMatchCustom",
+			decls.NewOverload("keyMatchCustom_string_string",
+				[]*exprpb.Type{decls.String, decls.String}, decls.Bool)),
+		Overload: &functions.Overload{
+			Operator: "keyMatchCustom_string_string",
+			Binary: func(lhs ref.Val, rhs ref.Val) ref.Val {
+				val1 := lhs.(types.String).Value().(string)
+				val2 := rhs.(types.String).Value().(string)
+
+				return types.Bool(CustomFunction(val1, val2))
+			}},
+	})
 
 	testEnforce(t, e, "alice", "/alice_data2/myid", "GET", false)
 	testEnforce(t, e, "alice", "/alice_data2/myid/using/res_id", "GET", true)

@@ -14,7 +14,9 @@
 
 package casbin
 
-import "github.com/Knetic/govaluate"
+import (
+	"github.com/casbin/casbin/v2/model"
+)
 
 // GetAllSubjects gets the list of subjects that show up in the current policy.
 func (e *Enforcer) GetAllSubjects() []string {
@@ -255,7 +257,9 @@ func (e *Enforcer) RemoveFilteredNamedGroupingPolicy(ptype string, fieldIndex in
 	return ruleRemoved, err
 }
 
+// TODO should not exist because all funcs should be provided at instantiation of Enforcer
+// TODO if it exists, it should cause an update of decls, overloads, etc. ?
 // AddFunction adds a customized function.
-func (e *Enforcer) AddFunction(name string, function govaluate.ExpressionFunction) {
-	e.fm.AddFunction(name, function)
+func (e *Enforcer) AddFunction(function model.Function) {
+	e.fm.AddFunction(function)
 }

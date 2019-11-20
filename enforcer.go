@@ -16,7 +16,6 @@ package casbin
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/casbin/casbin/v2/util"
@@ -27,12 +26,10 @@ import (
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/interpreter/functions"
 	"github.com/google/cel-go/parser"
-	"strings"
-
-	"github.com/hashicorp/go-memdb"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/ompluscator/dynamic-struct"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
+	"strconv"
+	"strings"
 
 	"github.com/casbin/casbin/v2/effect"
 	"github.com/casbin/casbin/v2/log"
@@ -41,6 +38,10 @@ import (
 	"github.com/casbin/casbin/v2/persist/file-adapter"
 	"github.com/casbin/casbin/v2/rbac"
 	"github.com/casbin/casbin/v2/rbac/default-role-manager"
+)
+
+const (
+	TableName = "policy"
 )
 
 // Enforcer is the main interface for authorization enforcement and policy management.
@@ -52,8 +53,8 @@ type Enforcer struct {
 
 	flattenEvaluator    cel.Program
 	sqlConditionBuilder func(map[string]interface{}) (string, error)
-	db                  *memdb.MemDB
-	sqliteDB            *sql.DB
+	//db                  *memdb.MemDB
+	sqliteDB *sql.DB
 
 	adapter persist.Adapter
 	watcher persist.Watcher
@@ -134,13 +135,15 @@ func NewEnforcer(params ...interface{}) (*Enforcer, error) {
 		return nil, errors.New("invalid parameters for enforcer")
 	}
 
+	/*
 	db, err := e.BuildDB()
 	if err != nil {
 		return nil, err
 	}
 	e.db = db
+	*/
 
-	sqliteDB, err := e.BuildSqliteDB()
+	sqliteDB, err := e.CreateDB()
 	if err != nil {
 		return nil, err
 	}
@@ -252,27 +255,32 @@ func NewEnforcer(params ...interface{}) (*Enforcer, error) {
 	return e, nil
 }
 
-func (e *Enforcer) BuildSqliteDB() (*sql.DB, error) {
+func (e *Enforcer) CreateDB() (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		return nil, err
 	}
 	//defer db.Close()
 
-	tableName := "policy"
 	sqlColumns := []string{"id INTEGER NOT NULL PRIMARY KEY"}
 	sqlIndexes := []string{}
-	fields := []string{"id"}
-	questionMarks := []string{"?"}
-	for _, token := range e.model["p"]["p"].Tokens {
+
+	countTokens := len(e.model["p"]["p"].Tokens)
+	fields := make([]string, countTokens+1)
+	fields[0] = "id"
+	questionMarks := make([]string, countTokens+1)
+	questionMarks[0] = "?"
+
+	for i, token := range e.model["p"]["p"].Tokens {
 		sqlColumns = append(sqlColumns, fmt.Sprintf("%s TEXT", token))
-		sqlIndexes = append(sqlIndexes, fmt.Sprintf("CREATE INDEX %s_index ON %s (%s)", token, tableName, token))
-		fields = append(fields, token)
-		questionMarks = append(questionMarks, "?")
+		sqlIndexes = append(sqlIndexes, fmt.Sprintf("CREATE INDEX %s_index ON %s (%s)", token, TableName, token))
+
+		fields[i+1] = token
+		questionMarks[i+1] = "?"
 	}
 
 	sqlStmt := fmt.Sprintf("BEGIN; CREATE TABLE %s (%s); %s; COMMIT;",
-		tableName,
+		TableName,
 		strings.Join(sqlColumns, ","),
 		strings.Join(sqlIndexes, ";"))
 
@@ -281,30 +289,81 @@ func (e *Enforcer) BuildSqliteDB() (*sql.DB, error) {
 		return nil, err
 	}
 
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, err
+	return db, nil
+}
+
+// TODO PROBLÈME : quand on va supprimer des policies de l'array, ça va fausser la correspondance entre index en db et index dans l'array !!!
+func (e *Enforcer) AddPolicyToDB(rule []string) error {
+	// code duplication
+	countTokens := len(e.model["p"]["p"].Tokens)
+	fields := make([]string, countTokens+1)
+	fields[0] = "id"
+	questionMarks := make([]string, countTokens+1)
+	questionMarks[0] = "?"
+
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		TableName, strings.Join(fields, ","), strings.Join(questionMarks, ","))
+
+	values := make([]interface{}, len(rule)+1)
+	values[0] = len(e.model["p"]["p"].Policy) - 1 // TODO is that enough to ensure policy index in db table is identical to its index in policy array?
+	for i, v := range values {
+		values[i+1] = v
 	}
-	stmt, err := tx.Prepare(fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		tableName,
-		strings.Join(fields, ","),
-		strings.Join(questionMarks, ",")))
-	if err != nil {
-		return nil, err
+
+	if _, err := e.sqliteDB.Exec(query, values...); err != nil {
+		return err
 	}
-	defer stmt.Close()
+
+	return nil
+}
+
+func (e *Enforcer) UpdateDB() error {
+	countTokens := len(e.model["p"]["p"].Tokens)
+	// frequent inserts in order to avoid "too many SQL variables" (default SQLITE_MAX_VARIABLE_NUMBER = 999)
+	batchSize := int(999 / (countTokens + 1))
+
+	// TODO code duplication
+	fields := make([]string, countTokens+1)
+	fields[0] = "id"
+	questionMarks := make([]string, countTokens+1)
+	questionMarks[0] = "?"
+	for i, token := range e.model["p"]["p"].Tokens {
+		fields[i+1] = token
+		questionMarks[i+1] = "?"
+	}
+
+	valuesStatements := []string{}
+	values := []interface{}{}
+
+	countPolicies := e.model["p"]["p"].Policy
+	sqlVariableNumber := 1
+	sqlVariables := make([]string, countTokens+1)
 	for i, policy := range e.model["p"]["p"].Policy {
-		values := []interface{}{i}
+		for j := 0; j < countTokens+1; j++ {
+			sqlVariables[j] = "$" + strconv.Itoa(sqlVariableNumber)
+			sqlVariableNumber++
+		}
+		valuesStatements = append(valuesStatements, "("+strings.Join(sqlVariables, ",")+")")
+
+		values := append(values, i)
 		for _, v := range policy {
 			values = append(values, v)
 		}
 
-		_, err = stmt.Exec(values...)
-		if err != nil {
-			return nil, err
+		if (i%batchSize == 0 && i != 0) || i == len(countPolicies)-1 {
+			query := fmt.Sprintf("INSERT INTO %s (%s) VALUES ", TableName, strings.Join(fields, ",")) +
+				strings.Join(valuesStatements, ",")
+
+			if _, err := e.sqliteDB.Exec(query, values...); err != nil {
+				return err
+			}
+
+			valuesStatements = []string{}
+			values = []interface{}{}
 		}
 	}
-	tx.Commit()
+
+	return nil
 
 	/*
 	rows, err := db.Query("select id from policy")
@@ -325,10 +384,9 @@ func (e *Enforcer) BuildSqliteDB() (*sql.DB, error) {
 		return nil, err
 	}
 	*/
-
-	return db, nil
 }
 
+/*
 func (e *Enforcer) BuildDB() (*memdb.MemDB, error) {
 	indexes := map[string]*memdb.IndexSchema{}
 	indexes["id"] = &memdb.IndexSchema{
@@ -393,6 +451,7 @@ func (e *Enforcer) BuildDB() (*memdb.MemDB, error) {
 
 	return db, nil
 }
+*/
 
 func (e *Enforcer) BuildDeclarationsAndOverloads() ([]*exprpb.Decl, []*functions.Overload, error) {
 	declarations := []*exprpb.Decl{}
@@ -408,17 +467,18 @@ func (e *Enforcer) BuildDeclarationsAndOverloads() ([]*exprpb.Decl, []*functions
 		for key, ast := range e.model["g"] {
 			rm := ast.RM
 
-			declarations = append(declarations, decls.NewFunction(key,
-				decls.NewOverload(fmt.Sprintf("%s_string_string", key),
-					[]*exprpb.Type{decls.String, decls.String},
-					decls.Bool)))
-			declarations = append(declarations, decls.NewFunction(key,
-				decls.NewOverload(fmt.Sprintf("%s_string_string_string", key),
-					[]*exprpb.Type{decls.String, decls.String, decls.String},
-					decls.Bool)))
+			overloadId2Args := fmt.Sprintf("%s_string_string", key)
+			overloadId3Args := fmt.Sprintf("%s_string_string_string", key)
+
+			declarations = append(declarations,
+				decls.NewFunction(key,
+					decls.NewOverload(overloadId2Args,
+						[]*exprpb.Type{decls.String, decls.String}, decls.Bool),
+					decls.NewOverload(overloadId3Args,
+						[]*exprpb.Type{decls.String, decls.String, decls.String}, decls.Bool)))
 
 			overloads = append(overloads, &functions.Overload{
-				Operator: fmt.Sprintf("%s_string_string", key),
+				Operator: overloadId2Args,
 				Binary: func(val1 ref.Val, val2 ref.Val) ref.Val {
 					name1 := val1.(types.String).Value().(string)
 					name2 := val2.(types.String).Value().(string)
@@ -432,7 +492,7 @@ func (e *Enforcer) BuildDeclarationsAndOverloads() ([]*exprpb.Decl, []*functions
 					return types.Bool(res)
 				}})
 			overloads = append(overloads, &functions.Overload{
-				Operator: fmt.Sprintf("%s_string_string_string", key),
+				Operator: overloadId3Args,
 				Function: func(values ...ref.Val) ref.Val {
 					name1 := values[0].(types.String).Value().(string)
 					name2 := values[1].(types.String).Value().(string)
@@ -458,20 +518,15 @@ func (e *Enforcer) BuildDeclarationsAndOverloads() ([]*exprpb.Decl, []*functions
 func (e *Enforcer) BuildCheckedAst(rawExpr string, env cel.Env) (cel.Ast, error) {
 	parsed, issues := env.Parse(rawExpr)
 	if issues != nil && issues.Err() != nil {
-		return nil, nil // TODO
+		return nil, issues.Err()
 	}
 
 	checked, issues := env.Check(parsed)
 	if issues != nil && issues.Err() != nil {
-		return nil, nil // TODO
+		return nil, issues.Err()
 	}
 
 	return checked, nil
-}
-
-func (e *Enforcer) BuildProgram(env cel.Env, ast cel.Ast) (cel.Program, error) {
-
-	return nil, nil
 }
 
 // InitWithFile initializes an enforcer with a model file and a policy file.
@@ -952,6 +1007,7 @@ func (e *Enforcer) EnforceWithMatcher(matcher string, rvals ...interface{}) (boo
 	return e.enforce(matcher, rvals...)
 }
 
+// TODO not used anymore
 // assumes bounds have already been checked
 type enforceParameters struct {
 	rTokens map[string]int
@@ -961,6 +1017,7 @@ type enforceParameters struct {
 	pVals   []string
 }
 
+// TODO not used anymore
 // implements govaluate.Parameters
 func (p enforceParameters) Get(name string) (interface{}, error) {
 	if name == "" {

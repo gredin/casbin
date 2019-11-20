@@ -81,6 +81,7 @@ func (model Model) GetFilteredPolicy(sec string, ptype string, fieldIndex int, f
 	return res
 }
 
+// TODO can be optimized (use sqlite db)
 // HasPolicy determines whether a model has the specified policy rule.
 func (model Model) HasPolicy(sec string, ptype string, rule []string) bool {
 	for _, r := range model[sec][ptype].Policy {
