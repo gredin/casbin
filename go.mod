@@ -11,3 +11,5 @@ require (
 	github.com/ompluscator/dynamic-struct v1.2.0
 	google.golang.org/genproto v0.0.0-20191108220845-16a3f7862a1a
 )
+
+go 1.13

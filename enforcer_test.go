@@ -31,7 +31,9 @@ func TestKeyMatchModelInMemory(t *testing.T) {
 
 	a := fileadapter.NewAdapter("examples/keymatch_policy.csv")
 
-	e, _ := NewEnforcer(m, a)
+	e, err := NewEnforcer(m, a)
+
+	_= err
 
 	testEnforce(t, e, "alice", "/alice_data/resource1", "GET", true)
 	testEnforce(t, e, "alice", "/alice_data/resource1", "POST", true)

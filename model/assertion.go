@@ -28,7 +28,7 @@ type Assertion struct {
 	Key    string
 	Value  string
 	Tokens []string
-	Policy [][]string
+	Policy [][]string // TODO replace by (ordered!) map[int][][]string - https://github.com/emirpasic/gods#linkedhashmap
 	RM     rbac.RoleManager
 }
 

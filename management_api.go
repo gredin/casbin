@@ -262,4 +262,6 @@ func (e *Enforcer) RemoveFilteredNamedGroupingPolicy(ptype string, fieldIndex in
 // AddFunction adds a customized function.
 func (e *Enforcer) AddFunction(function model.Function) {
 	e.fm.AddFunction(function)
+
+	e.initialize() // TODO handle error
 }

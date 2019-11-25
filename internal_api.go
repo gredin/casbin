@@ -40,6 +40,15 @@ func (e *Enforcer) addPolicy(sec string, ptype string, rule []string) (bool, err
 		}
 	}
 
+	if sec == "p" {
+		// TODO db does not support "ptype"
+		// TODO but "Currently only single policy definition p is supported. p2 is yet not supported." https://casbin.org/docs/en/syntax-for-models#policy-definition
+		err := e.addPolicyToDB(rule)
+		if err != nil {
+			return ruleAdded, err
+		}
+	}
+
 	return ruleAdded, nil
 }
 
