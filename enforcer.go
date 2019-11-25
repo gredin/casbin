@@ -260,6 +260,15 @@ func (e *Enforcer) initialize() error {
 	}
 	e.sqliteDB = sqliteDB
 
+	err = e.initializeEvaluator()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *Enforcer) initializeEvaluator() error {
 	declarations, overloads, err := e.buildDeclarationsAndOverloads()
 	if err != nil {
 		return err
@@ -476,7 +485,14 @@ func (e *Enforcer) BuildRoleLinks() error {
 		return err
 	}
 
-	return e.model.BuildRoleLinks(e.rm)
+	err = e.model.BuildRoleLinks(e.rm)
+	if err != nil {
+		return err
+	}
+
+	err = e.initializeEvaluator() // TODO necessary for reinit overloads
+
+	return err
 }
 
 // enforce use a custom matcher to decides whether a "subject" can access a "object" with the operation "action", input parameters are usually: (matcher, sub, obj, act), use model matcher by default when matcher is "".
@@ -698,7 +714,10 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 			return false, err
 		}
 
-		if result.Value().(bool) {
+		// TODO
+		a, ok := result.Value().(bool)
+		_ = a
+		if ok {
 			policyEffects[0] = effect.Allow
 		} else {
 			policyEffects[0] = effect.Indeterminate

@@ -45,17 +45,19 @@ func ExprToSQL(expr *exprpb.Expr) (string, error) {
 	case *exprpb.Expr_CallExpr:
 		e := expr.GetCallExpr()
 
-		left, err := ExprToSQL(e.Args[0])
-		if err != nil {
-			return "", err
-		}
-		right, err := ExprToSQL(e.Args[1])
-		if err != nil {
-			return "", err
-		}
-
 		switch e.Function {
+		case operators.In:
+			return AllCondition, nil
 		case operators.LogicalAnd:
+			left, err := ExprToSQL(e.Args[0])
+			if err != nil {
+				return "", err
+			}
+			right, err := ExprToSQL(e.Args[1])
+			if err != nil {
+				return "", err
+			}
+
 			if left == AllCondition {
 				return right, nil
 			} else if right == AllCondition {
@@ -64,12 +66,30 @@ func ExprToSQL(expr *exprpb.Expr) (string, error) {
 
 			return left + " AND " + right, nil
 		case operators.LogicalOr:
+			left, err := ExprToSQL(e.Args[0])
+			if err != nil {
+				return "", err
+			}
+			right, err := ExprToSQL(e.Args[1])
+			if err != nil {
+				return "", err
+			}
+
 			if left == AllCondition || right == AllCondition {
 				return AllCondition, nil
 			}
 
 			return left + " OR " + right, nil
 		case operators.Equals:
+			left, err := ExprToSQL(e.Args[0])
+			if err != nil {
+				return "", err
+			}
+			right, err := ExprToSQL(e.Args[1])
+			if err != nil {
+				return "", err
+			}
+
 			return left + " = " + right, nil
 		//case operators.LogicalNot:
 		//	return NoneCondition
