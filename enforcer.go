@@ -564,7 +564,7 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		// TODO
 	}
 
-	policyIds := []int{}
+	ruleIds := []int{}
 	rows, err := e.sqliteDB.Query("SELECT id FROM policy WHERE " + sqlCondition)
 	if err != nil {
 		// TODO
@@ -577,7 +577,7 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 			// TODO
 		}
 
-		policyIds = append(policyIds, id)
+		ruleIds = append(ruleIds, id)
 	}
 	err = rows.Err()
 	if err != nil {
@@ -586,10 +586,10 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 
 	var policyEffects []effect.Effect
 	var matcherResults []float64
-	if policyLen := len(e.model["p"]["p"].Policy); policyLen != 0 {
-		policyEffects = make([]effect.Effect, len(policyIds)+1)
-		matcherResults = make([]float64, len(policyIds)+1)
-		policyEffects[len(policyIds)] = effect.Indeterminate // TODO explain why
+	if policyLen := e.model["p"]["p"].Policy.Len(); policyLen != 0 {
+		policyEffects = make([]effect.Effect, len(ruleIds)+1)
+		matcherResults = make([]float64, len(ruleIds)+1)
+		policyEffects[len(ruleIds)] = effect.Indeterminate // TODO explain why
 
 		if len(e.model["r"]["r"].Tokens) != len(rvals) {
 			return false, fmt.Errorf(
@@ -607,14 +607,18 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 			}
 		}
 
+		// TODO code duplication (request := map[string]interface{}{} ...)
 		vars := map[string]interface{}{}
 		for j, rval := range rvals {
 			token := e.model["r"]["r"].Tokens[j]
 			vars[token] = rval
 		}
 
-		for i, policyId := range policyIds {
-			pvals := e.model["p"]["p"].Policy[policyId]
+		for i, ruleId := range ruleIds {
+			pvals, ok := e.model["p"]["p"].Policy.Get(ruleId)
+			if !ok {
+				// TODO ??!! (consistency issue between DB and model["p"]["p"].Policy)
+			}
 
 			// log.LogPrint("Policy Rule: ", pvals)
 			if len(e.model["p"]["p"].Tokens) != len(pvals) {
@@ -851,22 +855,27 @@ func (e *Enforcer) updateDB() error {
 	valuesStatements := []string{}
 	values := []interface{}{}
 
-	countPolicies := e.model["p"]["p"].Policy
+	policy := e.model["p"]["p"].Policy
+	policyLen := e.model["p"]["p"].Policy.Len()
 	sqlVariableNumber := 1
 	sqlVariables := make([]string, countTokens+1)
-	for i, policy := range e.model["p"]["p"].Policy {
+
+	i := 0
+	for policy.Begin(); policy.Next(); {
+		ruleId, rule := policy.GetNext()
+
 		for j := 0; j < countTokens+1; j++ {
 			sqlVariables[j] = "$" + strconv.Itoa(sqlVariableNumber)
 			sqlVariableNumber++
 		}
 		valuesStatements = append(valuesStatements, "("+strings.Join(sqlVariables, ",")+")")
 
-		values = append(values, i)
-		for _, v := range policy {
+		values = append(values, ruleId)
+		for _, v := range rule {
 			values = append(values, v)
 		}
 
-		if (i%batchSize == 0 && i != 0) || i == len(countPolicies)-1 {
+		if (i%batchSize == 0 && i != 0) || i == policyLen-1 {
 			query := fmt.Sprintf("INSERT INTO %s (%s) VALUES ", TableName, strings.Join(fields, ",")) +
 				strings.Join(valuesStatements, ",")
 
@@ -877,6 +886,8 @@ func (e *Enforcer) updateDB() error {
 			valuesStatements = []string{}
 			values = []interface{}{}
 		}
+
+		i++
 	}
 
 	return nil
@@ -903,7 +914,7 @@ func (e *Enforcer) updateDB() error {
 }
 
 // TODO PROBLÈME : quand on va supprimer des policies de l'array, ça va fausser la correspondance entre index en db et index dans l'array !!!
-func (e *Enforcer) addPolicyToDB(rule []string) error {
+func (e *Enforcer) addPolicyToDB(ruleId int, rule []string) error {
 	countTokens := len(e.model["p"]["p"].Tokens)
 	// TODO code duplication
 	fields := make([]string, countTokens+1)
@@ -920,7 +931,7 @@ func (e *Enforcer) addPolicyToDB(rule []string) error {
 
 	// TODO make sure len(rule) == len(tokens)
 	values := make([]interface{}, len(rule)+1)
-	values[0] = len(e.model["p"]["p"].Policy) - 1 // TODO is that enough to ensure policy index in db table is identical to its index in policy array?
+	values[0] = ruleId
 	for i, v := range rule {
 		values[i+1] = v
 	}

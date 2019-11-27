@@ -47,6 +47,7 @@ func (model Model) AddDef(sec string, key string, value string) bool {
 	ast := Assertion{}
 	ast.Key = key
 	ast.Value = value
+	ast.Policy = NewPolicy()
 
 	if ast.Value == "" {
 		return false

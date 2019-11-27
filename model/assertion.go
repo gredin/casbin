@@ -28,14 +28,19 @@ type Assertion struct {
 	Key    string
 	Value  string
 	Tokens []string
-	Policy [][]string // TODO replace by (ordered!) map[int][][]string - https://github.com/emirpasic/gods#linkedhashmap
+	Policy *Policy //[][]string // TODO replace by (ordered!) map[int][][]string - https://github.com/emirpasic/gods#linkedhashmap
 	RM     rbac.RoleManager
 }
 
 func (ast *Assertion) buildRoleLinks(rm rbac.RoleManager) error {
 	ast.RM = rm
 	count := strings.Count(ast.Value, "_")
-	for _, rule := range ast.Policy {
+
+	policy := ast.Policy
+
+	for policy.Begin(); policy.Next(); {
+		_, rule := policy.GetNext()
+
 		if count < 2 {
 			return errors.New("the number of \"_\" in role definition should be at least 2")
 		}

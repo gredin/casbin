@@ -55,7 +55,11 @@ func (a *Adapter) SavePolicy(model model.Model) error {
 	var tmp bytes.Buffer
 
 	for ptype, ast := range model["p"] {
-		for _, rule := range ast.Policy {
+		policy := ast.Policy
+
+		for policy.Begin(); policy.Next(); {
+			_, rule := policy.GetNext()
+
 			tmp.WriteString(ptype + ", ")
 			tmp.WriteString(util.ArrayToString(rule))
 			tmp.WriteString("\n")
@@ -63,7 +67,11 @@ func (a *Adapter) SavePolicy(model model.Model) error {
 	}
 
 	for ptype, ast := range model["g"] {
-		for _, rule := range ast.Policy {
+		policy := ast.Policy
+
+		for policy.Begin(); policy.Next(); {
+			_, rule := policy.GetNext()
+
 			tmp.WriteString(ptype + ", ")
 			tmp.WriteString(util.ArrayToString(rule))
 			tmp.WriteString("\n")

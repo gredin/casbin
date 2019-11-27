@@ -33,7 +33,7 @@ func LoadPolicyLine(line string, model model.Model) {
 
 	key := tokens[0]
 	sec := key[:1]
-	model[sec][key].Policy = append(model[sec][key].Policy, tokens[1:])
+	model[sec][key].Policy.Put(tokens[1:])
 }
 
 // Adapter is the interface for Casbin adapters.

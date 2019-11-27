@@ -18,7 +18,90 @@ import (
 	"github.com/casbin/casbin/v2/log"
 	"github.com/casbin/casbin/v2/rbac"
 	"github.com/casbin/casbin/v2/util"
+	"github.com/emirpasic/gods/maps/linkedhashmap"
 )
+
+type Policy struct {
+	ruleMap       *linkedhashmap.Map
+	autoincrement int
+	iterator      linkedhashmap.Iterator
+}
+
+func NewPolicy() *Policy {
+	ruleMap := linkedhashmap.New()
+
+	return &Policy{
+		ruleMap:       ruleMap,
+		autoincrement: 0,
+		iterator:      ruleMap.Iterator(),
+	}
+}
+
+func (p *Policy) GetRules() [][]string {
+	values := make([][]string, p.ruleMap.Size())
+	i := 0
+	var ok bool
+	for p.iterator.Begin(); p.iterator.Next(); {
+		values[i], ok = p.iterator.Value().([]string)
+		if !ok {
+			// TODO panic
+		}
+		i++
+	}
+	return values
+}
+
+func (p *Policy) Begin() {
+	p.iterator.Begin()
+}
+
+func (p *Policy) Next() bool {
+	return p.iterator.Next()
+}
+
+func (p *Policy) GetNext() (int, []string) {
+	k, ok := p.iterator.Key().(int)
+	if !ok {
+		// TODO panic
+	}
+
+	v, ok := p.iterator.Value().([]string)
+	if !ok {
+		// TODO panic
+	}
+
+	return k, v
+}
+
+func (p *Policy) Put(rule []string) int {
+	i := p.autoincrement
+	p.ruleMap.Put(i, rule)
+	p.autoincrement++
+
+	return i
+}
+
+func (p *Policy) Get(ruleId int) ([]string, bool) {
+	r, ok := p.ruleMap.Get(ruleId)
+	if !ok {
+		return []string{}, false
+	}
+
+	rule, ok := r.([]string)
+	if !ok {
+		// TODO panic
+	}
+
+	return rule, true
+}
+
+func (p *Policy) Len() int {
+	return p.ruleMap.Size()
+}
+
+func (p *Policy) Remove(i int) {
+	p.ruleMap.Remove(i)
+}
 
 // BuildRoleLinks initializes the roles in RBAC.
 func (model Model) BuildRoleLinks(rm rbac.RoleManager) error {
@@ -36,35 +119,39 @@ func (model Model) BuildRoleLinks(rm rbac.RoleManager) error {
 func (model Model) PrintPolicy() {
 	log.LogPrint("Policy:")
 	for key, ast := range model["p"] {
-		log.LogPrint(key, ": ", ast.Value, ": ", ast.Policy)
+		log.LogPrint(key, ": ", ast.Value, ": ", ast.Policy) // TODO ast.Policy.String()
 	}
 
 	for key, ast := range model["g"] {
-		log.LogPrint(key, ": ", ast.Value, ": ", ast.Policy)
+		log.LogPrint(key, ": ", ast.Value, ": ", ast.Policy) // TODO ast.Policy.String()
 	}
 }
 
 // ClearPolicy clears all current policy.
 func (model Model) ClearPolicy() {
 	for _, ast := range model["p"] {
-		ast.Policy = nil
+		ast.Policy = NewPolicy() // TODO
 	}
 
 	for _, ast := range model["g"] {
-		ast.Policy = nil
+		ast.Policy = NewPolicy() // TODO
 	}
 }
 
 // GetPolicy gets all rules in a policy.
 func (model Model) GetPolicy(sec string, ptype string) [][]string {
-	return model[sec][ptype].Policy
+	return model[sec][ptype].Policy.GetRules()
 }
 
 // GetFilteredPolicy gets rules based on field filters from a policy.
 func (model Model) GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) [][]string {
 	res := [][]string{}
 
-	for _, rule := range model[sec][ptype].Policy {
+	policy := model[sec][ptype].Policy
+
+	for policy.Begin(); policy.Next(); {
+		_, rule := policy.GetNext()
+
 		matched := true
 		for i, fieldValue := range fieldValues {
 			if fieldValue != "" && rule[fieldIndex+i] != fieldValue {
@@ -84,7 +171,11 @@ func (model Model) GetFilteredPolicy(sec string, ptype string, fieldIndex int, f
 // TODO can be optimized (use sqlite db)
 // HasPolicy determines whether a model has the specified policy rule.
 func (model Model) HasPolicy(sec string, ptype string, rule []string) bool {
-	for _, r := range model[sec][ptype].Policy {
+	policy := model[sec][ptype].Policy
+
+	for policy.Begin(); policy.Next(); {
+		_, r := policy.GetNext()
+
 		if util.ArrayEquals(rule, r) {
 			return true
 		}
@@ -94,19 +185,25 @@ func (model Model) HasPolicy(sec string, ptype string, rule []string) bool {
 }
 
 // AddPolicy adds a policy rule to the model.
-func (model Model) AddPolicy(sec string, ptype string, rule []string) bool {
+func (model Model) AddPolicy(sec string, ptype string, rule []string) (bool, int) {
 	if !model.HasPolicy(sec, ptype, rule) {
-		model[sec][ptype].Policy = append(model[sec][ptype].Policy, rule)
-		return true
+		ruleId := model[sec][ptype].Policy.Put(rule)
+
+		return true, ruleId
 	}
-	return false
+	return false, 0
 }
 
 // RemovePolicy removes a policy rule from the model.
 func (model Model) RemovePolicy(sec string, ptype string, rule []string) bool {
-	for i, r := range model[sec][ptype].Policy {
+	policy := model[sec][ptype].Policy
+
+	for policy.Begin(); policy.Next(); {
+		i, r := policy.GetNext()
+
 		if util.ArrayEquals(rule, r) {
-			model[sec][ptype].Policy = append(model[sec][ptype].Policy[:i], model[sec][ptype].Policy[i+1:]...)
+			policy.Remove(i)
+
 			return true
 		}
 	}
@@ -116,12 +213,17 @@ func (model Model) RemovePolicy(sec string, ptype string, rule []string) bool {
 
 // RemoveFilteredPolicy removes policy rules based on field filters from the model.
 func (model Model) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) bool {
-	tmp := [][]string{}
+	foundIndexes := []int{}
 	res := false
-	for _, rule := range model[sec][ptype].Policy {
+
+	policy := model[sec][ptype].Policy
+
+	for policy.Begin(); policy.Next(); {
+		i, rule := policy.GetNext()
+
 		matched := true
-		for i, fieldValue := range fieldValues {
-			if fieldValue != "" && rule[fieldIndex+i] != fieldValue {
+		for j, fieldValue := range fieldValues {
+			if fieldValue != "" && rule[fieldIndex+j] != fieldValue {
 				matched = false
 				break
 			}
@@ -129,12 +231,15 @@ func (model Model) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int
 
 		if matched {
 			res = true
-		} else {
-			tmp = append(tmp, rule)
+			foundIndexes = append(foundIndexes, i)
 		}
 	}
 
-	model[sec][ptype].Policy = tmp
+	// TODO efficiency
+	for _, i := range foundIndexes {
+		policy.Remove(i)
+	}
+
 	return res
 }
 
@@ -142,7 +247,11 @@ func (model Model) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int
 func (model Model) GetValuesForFieldInPolicy(sec string, ptype string, fieldIndex int) []string {
 	values := []string{}
 
-	for _, rule := range model[sec][ptype].Policy {
+	policy := model[sec][ptype].Policy
+
+	for policy.Begin(); policy.Next(); {
+		_, rule := policy.GetNext()
+
 		values = append(values, rule[fieldIndex])
 	}
 
