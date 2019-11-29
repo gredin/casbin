@@ -6,6 +6,7 @@ package casbin
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"regexp"
 	"strconv"
 )
@@ -63,7 +64,7 @@ var NotValidInputError = errors.New("Not a valid input: map or slice")
 // Flatten generates a flat map from a nested one.  The original may include values of type map, slice and scalar,
 // but not struct.  Keys in the flat map will be a compound of descending map keys and slice iterations.
 // The presentation of keys is set by style.  A prefix is joined to each key.
-func Flatten(nested map[string]interface{}, prefix string, keyMerger KeyMerger) (map[string]interface{}, error) {
+func Flatten(nested interface{}, prefix string, keyMerger KeyMerger) (map[string]interface{}, error) {
 	flatmap := make(map[string]interface{})
 
 	err := flatten(true, flatmap, nested, prefix, keyMerger)
@@ -107,6 +108,8 @@ func FlattenString(nestedstr, prefix string, keyMerger KeyMerger) (string, error
 }
 
 func flatten(top bool, flatMap map[string]interface{}, nested interface{}, prefix string, keyMerger KeyMerger) error {
+
+	/*
 	assign := func(newKey string, v interface{}) error {
 		switch v.(type) {
 		case map[string]interface{}, []interface{}:
@@ -119,21 +122,74 @@ func flatten(top bool, flatMap map[string]interface{}, nested interface{}, prefi
 
 		return nil
 	}
+	*/
 
 	switch nested.(type) {
 	case map[string]interface{}:
 		for k, v := range nested.(map[string]interface{}) {
 			newKey := keyMerger.MergeKeys(top, prefix, k)
-			assign(newKey, v)
+
+			if err := flatten(false, flatMap, v, newKey, keyMerger); err != nil {
+				return err
+			}
 		}
 	case []interface{}:
 		for i, v := range nested.([]interface{}) {
 			newKey := keyMerger.MergeKeys(top, prefix, strconv.Itoa(i))
-			assign(newKey, v)
+
+			if err := flatten(false, flatMap, v, newKey, keyMerger); err != nil {
+				return err
+			}
 		}
 	default:
-		return NotValidInputError
+		// TODO reference: https://github.com/doublerebel/bellows/blob/master/main.go
+
+		original := reflect.ValueOf(nested)
+		kind := original.Kind()
+		if kind == reflect.Ptr || kind == reflect.Interface {
+			original = reflect.Indirect(original)
+			kind = original.Kind()
+		}
+		t := original.Type()
+
+		switch kind {
+		case reflect.Map:
+			if t.Key().Kind() != reflect.String {
+				break
+			}
+			for _, childKey := range original.MapKeys() {
+				childValue := original.MapIndex(childKey)
+
+				newKey := keyMerger.MergeKeys(top, prefix, childKey.String())
+
+				if err := flatten(false, flatMap, childValue.Interface(), newKey, keyMerger); err != nil {
+					return err
+				}
+			}
+		case reflect.Struct:
+			for i := 0; i < original.NumField(); i += 1 {
+				childKey := t.Field(i).Name
+				childValue := original.Field(i)
+
+				newKey := keyMerger.MergeKeys(top, prefix, childKey)
+
+				if err := flatten(false, flatMap, childValue.Interface(), newKey, keyMerger); err != nil {
+					return err
+				}
+			}
+		default:
+			if prefix != "" {
+				flatMap[prefix] = nested
+			}
+		}
+
+		//return NotValidInputError
 	}
+
+
+
+
+
 
 	return nil
 }

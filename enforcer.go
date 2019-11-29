@@ -628,15 +628,13 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		}
 
 		result, _, err := e.evaluator.Eval(vars)
-
 		if err != nil {
 			return false, err
 		}
 
-		// TODO
-		a, ok := result.Value().(bool)
-		_ = a
-		if ok {
+		resultBool, ok := result.Value().(bool)
+		// TODO what if result is number (int or double)?!
+		if ok && resultBool {
 			policyEffects[0] = effect.Allow
 		} else {
 			policyEffects[0] = effect.Indeterminate

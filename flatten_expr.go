@@ -7,14 +7,21 @@ import (
 )
 
 func FlattenExpr(expr *exprpb.Expr) (*exprpb.Expr, []string, error) {
-	identifiers := []string{}
+	identifiers := map[string]bool{}
 
 	flatExpr, err := flattenExpr(expr, identifiers)
 
-	return flatExpr, identifiers, err
+	uniqueIdentifiers := make([]string, len(identifiers))
+	i := 0
+	for identifier, _ := range identifiers {
+		uniqueIdentifiers[i] = identifier
+		i++
+	}
+
+	return flatExpr, uniqueIdentifiers, err
 }
 
-func flattenExpr(expr *exprpb.Expr, identifiers []string) (*exprpb.Expr, error) {
+func flattenExpr(expr *exprpb.Expr, identifiers map[string]bool) (*exprpb.Expr, error) {
 	switch expr.GetExprKind().(type) {
 	case *exprpb.Expr_ConstExpr:
 		return expr, nil
@@ -23,7 +30,7 @@ func flattenExpr(expr *exprpb.Expr, identifiers []string) (*exprpb.Expr, error) 
 
 		newName := util.ReplaceDots(e.Name)
 
-		identifiers = append(identifiers, newName)
+		identifiers[newName] = true
 
 		return &exprpb.Expr{
 			Id: expr.Id,
@@ -41,7 +48,7 @@ func flattenExpr(expr *exprpb.Expr, identifiers []string) (*exprpb.Expr, error) 
 			// TODO
 		}
 
-		identifiers = append(identifiers, identExpr.IdentExpr.Name)
+		identifiers[identExpr.IdentExpr.Name] = true
 
 		return &exprpb.Expr{
 			Id:       expr.Id,
