@@ -23,7 +23,6 @@ import (
 	"github.com/google/cel-go/checker/decls"
 	"github.com/google/cel-go/common"
 	"github.com/google/cel-go/common/types"
-	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/interpreter/functions"
 	"github.com/google/cel-go/parser"
 	_ "github.com/mattn/go-sqlite3"
@@ -42,7 +41,8 @@ import (
 )
 
 const (
-	TableName = "policy"
+	RuleTableName = "rule"
+	SqliteMaxParameters = 999
 )
 
 // Enforcer is the main interface for authorization enforcement and policy management.
@@ -52,10 +52,9 @@ type Enforcer struct {
 	fm        model.FunctionMap
 	eft       effect.Effector
 
-	evaluator           cel.Program
-	sqlConditionBuilder func(map[string]interface{}) (string, error)
-	sqliteDB            *sql.DB
-	//db                  *memdb.MemDB
+	evaluator            cel.Program
+	ruleConditionBuilder func(map[string]interface{}) (string, error)
+	ruleDB               *sql.DB
 
 	adapter persist.Adapter
 	watcher persist.Watcher
@@ -136,66 +135,6 @@ func NewEnforcer(params ...interface{}) (*Enforcer, error) {
 		return nil, errors.New("invalid parameters for enforcer")
 	}
 
-	/*
-	db, err := e.buildDB()
-	if err != nil {
-		return nil, err
-	}
-	e.db = db
-	*/
-
-	/*
-	checkedAst, err := e.buildCheckedAst(rawExpr, env)
-	if err != nil {
-		// TODO
-	}
-
-	checkedExpr := checkedAst.Expr()
-
-	flattenExpr, err := FlattenExpr(checkedExpr)
-	if err != nil {
-		// TODO
-	}
-
-	rawFlattenExpr, err := cel.AstToString()
-	if err != nil {
-		// TODO
-	}
-
-	flattenAst, err := e.buildCheckedAst(rawFlattenExpr, env)
-	if err != nil {
-		// TODO
-	}
-	*/
-
-	/*
-	evaluator, err := e.BuildEvaluator()
-	if err != nil {
-		return nil, err
-	}
-	e.evaluator = evaluator
-
-
-
-	// "SQL query engine"
-	// sqlite in memory
-	// AST => sql query
-
-	txn := db.Txn(false)
-	defer txn.Abort()
-	it, err := txn.Get("policy", "p_sub", "corp:Chanel")
-	if err != nil {
-		// TODO
-	}
-
-	fmt.Println("***")
-	for obj := it.Next(); obj != nil; obj = it.Next() {
-		reader := dynamicstruct.NewReader(obj)
-		println(reader.GetField("Id").Int())
-	}
-	fmt.Println("***")
-	*/
-
 	return e, nil
 }
 
@@ -246,53 +185,49 @@ func (e *Enforcer) initialize() error {
 	e.rm = defaultrolemanager.NewRoleManager(10)
 	e.eft = effect.NewDefaultEffector()
 	e.watcher = nil
+	e.evaluator = nil
 
 	e.enabled = true
 	e.autoSave = true
 	e.autoBuildRoleLinks = true
 
-	if e.sqliteDB != nil {
-		e.sqliteDB.Close() // TODO handle error?
+	if e.ruleDB != nil {
+		e.ruleDB.Close() // TODO handle error?
 	}
-	sqliteDB, err := e.createDB()
+	ruleDB, err := e.createDB()
 	if err != nil {
 		return err
 	}
-	e.sqliteDB = sqliteDB
+	e.ruleDB = ruleDB
 
-	err = e.initializeEvaluator()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (e *Enforcer) initializeEvaluator() error {
-	declarations, overloads, err := e.buildDeclarationsAndOverloads()
-	if err != nil {
-		return err
-	}
-
-	env, err := cel.NewEnv(cel.Declarations(declarations...))
-	if err != nil {
-		return err
-	}
-
-	rawExpr := e.model["m"]["m"].Value // TODO might be provided by EnforceWithMatcher(matcher string)
+	rawExpr := e.model["m"]["m"].Value // TODO might be empty "" - might be provided by EnforceWithMatcher(matcher string)
 
 	parsedExpr, errs := parser.Parse(common.NewTextSource(rawExpr))
 	if len(errs.GetErrors()) != 0 {
 		return errors.New(errs.ToDisplayString())
 	}
 
-	flatExpr, err := FlattenExpr(parsedExpr.GetExpr())
+	flatExpr, identifiers, err := FlattenExpr(parsedExpr.GetExpr())
 	if err != nil {
 		return err
 	}
 
 	//expr2, err := PartiallyEvalExpr(flatExp)(flatObj)
 	rawFlatExpr, err := parser.Unparse(flatExpr, parsedExpr.GetSourceInfo())
+	if err != nil {
+		return err
+	}
+
+	declarations, overloads, err := e.buildDeclarationsAndOverloads(identifiers)
+	if err != nil {
+		return err
+	}
+
+	env, err := cel.NewEnv(cel.Declarations(declarations...))
 	if err != nil {
 		return err
 	}
@@ -308,13 +243,15 @@ func (e *Enforcer) initializeEvaluator() error {
 	}
 	e.evaluator = program
 
-	e.sqlConditionBuilder = func(flatRequest map[string]interface{}) (string, error) {
+	e.ruleConditionBuilder = func(flatRequest map[string]interface{}) (string, error) {
 		expr, err := PartiallyEvalExpr(flatExpr)(flatRequest)
 		if err != nil {
 			return "", err
 		}
 
 		return ExprToSQL(expr)
+
+		// TODO return "1=1" if condition is empty
 	}
 
 	return nil
@@ -490,7 +427,7 @@ func (e *Enforcer) BuildRoleLinks() error {
 		return err
 	}
 
-	err = e.initializeEvaluator() // TODO necessary for reinit overloads
+	e.evaluator = nil // TODO necessary for reinit overloads
 
 	return err
 }
@@ -501,17 +438,42 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		return true, nil
 	}
 
-	/*
-	funcs := model.FunctionMap{}
-	for k, v := range e.fm {
-		funcs[k] = v
-	}
-	if _, ok := e.model["g"]; ok {
-		for key, ast := range e.model["g"] {
-			rm := ast.RM
-			funcs[key] = util.GenerateGFunction(rm)
+	if e.evaluator == nil {
+		err := e.initializeEvaluator()
+		if err != nil {
+			return false, err
 		}
 	}
+
+	if len(rvals) != len(e.model["r"]["r"].Tokens) {
+		return false, fmt.Errorf(
+			"invalid request size: expected %d, got %d, rvals: %v",
+			len(e.model["r"]["r"].Tokens),
+			len(rvals),
+			rvals)
+	}
+
+	request := map[string]interface{}{}
+	for j, rval := range rvals {
+		token := e.model["r"]["r"].Tokens[j]
+		request[token] = rval
+	}
+
+	flatRequest, err := Flatten(request, "", FuncMerger(func(top bool, key, subkey string) string {
+		if top {
+			key += subkey // TODO pas besoin de ReplaceDots car request = { r_sub => ..., r_obj => ... }
+		} else {
+			key += "_" + util.ReplaceDots(subkey)
+		}
+
+		return key
+	}))
+	if err != nil {
+		// TODO
+	}
+
+	// TODO 2 cases: matcher = "" AND matcher != ""
+	/*
 	var expString string
 	if matcher == "" {
 		expString = e.model["m"]["m"].Value
@@ -522,97 +484,51 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-
-	rTokens := make(map[string]int, len(e.model["r"]["r"].Tokens))
-	for i, token := range e.model["r"]["r"].Tokens {
-		rTokens[token] = i
-	}
-	pTokens := make(map[string]int, len(e.model["p"]["p"].Tokens))
-	for i, token := range e.model["p"]["p"].Tokens {
-		pTokens[token] = i
-	}
-
-	parameters := enforceParameters{
-		rTokens: rTokens,
-		rVals:   rvals,
-
-		pTokens: pTokens,
-	}
 	*/
-
-	request := map[string]interface{}{}
-	for j, rval := range rvals {
-		token := e.model["r"]["r"].Tokens[j]
-		request[token] = rval
-	}
-
-	flatRequest, err := Flatten(request, "", FuncMerger(func(top bool, key, subkey string) string {
-		if top {
-			key += subkey // TODO pas besoin de EscapeDots car request = { r_sub => ..., r_obj => ... }
-		} else {
-			key += "_" + util.EscapeDots(subkey)
-		}
-
-		return key
-	}))
-	if err != nil {
-		// TODO
-	}
-
-	sqlCondition, err := e.sqlConditionBuilder(flatRequest)
-	if err != nil {
-		// TODO
-	}
-
-	ruleIds := []int{}
-	rows, err := e.sqliteDB.Query("SELECT id FROM policy WHERE " + sqlCondition)
-	if err != nil {
-		// TODO
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id int
-		err = rows.Scan(&id)
+	pTokens := e.model["p"]["p"].Tokens
+	pTokensLen := len(pTokens)
+	var policyEffects []effect.Effect
+	var matcherResults []float64
+	if policyLen := e.model["p"]["p"].Policy.Len(); policyLen != 0 {
+		sqlCondition, err := e.ruleConditionBuilder(flatRequest)
 		if err != nil {
 			// TODO
 		}
 
-		ruleIds = append(ruleIds, id)
-	}
-	err = rows.Err()
-	if err != nil {
-		// TODO
-	}
+		ruleIds := []int{}
+		rows, err := e.ruleDB.Query(
+			fmt.Sprintf("SELECT id FROM %s WHERE %s", RuleTableName, sqlCondition))
+		if err != nil {
+			// TODO
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int
+			err = rows.Scan(&id)
+			if err != nil {
+				// TODO
+			}
 
-	var policyEffects []effect.Effect
-	var matcherResults []float64
-	if policyLen := e.model["p"]["p"].Policy.Len(); policyLen != 0 {
+			ruleIds = append(ruleIds, id)
+		}
+		err = rows.Err()
+		if err != nil {
+			// TODO
+		}
+
 		policyEffects = make([]effect.Effect, len(ruleIds)+1)
 		matcherResults = make([]float64, len(ruleIds)+1)
 		policyEffects[len(ruleIds)] = effect.Indeterminate // TODO explain why
 
-		if len(e.model["r"]["r"].Tokens) != len(rvals) {
-			return false, fmt.Errorf(
-				"invalid request size: expected %d, got %d, rvals: %v",
-				len(e.model["r"]["r"].Tokens),
-				len(rvals),
-				rvals)
-		}
-
 		effectTokenIndex := -1
-		for j, token := range e.model["p"]["p"].Tokens {
+		for j, token := range pTokens {
 			if token == "p_eft" {
 				effectTokenIndex = j
 				break
 			}
 		}
 
-		// TODO code duplication (request := map[string]interface{}{} ...)
-		vars := map[string]interface{}{}
-		for j, rval := range rvals {
-			token := e.model["r"]["r"].Tokens[j]
-			vars[token] = rval
-		}
+		vars := flatRequest
 
 		for i, ruleId := range ruleIds {
 			pvals, ok := e.model["p"]["p"].Policy.Get(ruleId)
@@ -621,16 +537,16 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 			}
 
 			// log.LogPrint("Policy Rule: ", pvals)
-			if len(e.model["p"]["p"].Tokens) != len(pvals) {
+			if len(pvals) != pTokensLen {
 				return false, fmt.Errorf(
 					"invalid policy size: expected %d, got %d, pvals: %v",
-					len(e.model["p"]["p"].Tokens),
+					pTokensLen,
 					len(pvals),
 					pvals)
 			}
 
 			for j, pval := range pvals {
-				token := e.model["p"]["p"].Tokens[j]
+				token := pTokens[j]
 				vars[token] = pval
 			}
 
@@ -706,10 +622,9 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		*/
 
 		// TODO code duplication
-		vars := map[string]interface{}{}
-		for j, rval := range rvals {
-			token := e.model["r"]["r"].Tokens[j]
-			vars[token] = rval
+		vars := flatRequest
+		for _, token := range pTokens {
+			vars[token] = ""
 		}
 
 		result, _, err := e.evaluator.Eval(vars)
@@ -760,44 +675,9 @@ func (e *Enforcer) Enforce(rvals ...interface{}) (bool, error) {
 
 // EnforceWithMatcher use a custom matcher to decides whether a "subject" can access a "object" with the operation "action", input parameters are usually: (matcher, sub, obj, act), use model matcher by default when matcher is "".
 func (e *Enforcer) EnforceWithMatcher(matcher string, rvals ...interface{}) (bool, error) {
-	// TODO handle this case (sqliteDB not used)
+	// TODO handle this case (ruleDB not used)
 
 	return e.enforce(matcher, rvals...)
-}
-
-// TODO not used anymore
-// assumes bounds have already been checked
-type enforceParameters struct {
-	rTokens map[string]int
-	rVals   []interface{}
-
-	pTokens map[string]int
-	pVals   []string
-}
-
-// TODO not used anymore
-// implements govaluate.Parameters
-func (p enforceParameters) Get(name string) (interface{}, error) {
-	if name == "" {
-		return nil, nil
-	}
-
-	switch name[0] {
-	case 'p':
-		i, ok := p.pTokens[name]
-		if !ok {
-			return nil, errors.New("No parameter '" + name + "' found.")
-		}
-		return p.pVals[i], nil
-	case 'r':
-		i, ok := p.rTokens[name]
-		if !ok {
-			return nil, errors.New("No parameter '" + name + "' found.")
-		}
-		return p.rVals[i], nil
-	default:
-		return nil, errors.New("No parameter '" + name + "' found.")
-	}
 }
 
 func (e *Enforcer) createDB() (*sql.DB, error) {
@@ -818,14 +698,14 @@ func (e *Enforcer) createDB() (*sql.DB, error) {
 
 	for i, token := range e.model["p"]["p"].Tokens {
 		sqlColumns = append(sqlColumns, fmt.Sprintf("%s TEXT", token))
-		sqlIndexes = append(sqlIndexes, fmt.Sprintf("CREATE INDEX %s_index ON %s (%s)", token, TableName, token))
+		sqlIndexes = append(sqlIndexes, fmt.Sprintf("CREATE INDEX %s_index ON %s (%s)", token, RuleTableName, token))
 
 		fields[i+1] = token
 		questionMarks[i+1] = "?"
 	}
 
 	sqlStmt := fmt.Sprintf("BEGIN; CREATE TABLE %s (%s); %s; COMMIT;",
-		TableName,
+		RuleTableName,
 		strings.Join(sqlColumns, ","),
 		strings.Join(sqlIndexes, ";"))
 
@@ -840,7 +720,7 @@ func (e *Enforcer) createDB() (*sql.DB, error) {
 func (e *Enforcer) updateDB() error {
 	countTokens := len(e.model["p"]["p"].Tokens)
 	// frequent inserts in order to avoid "too many SQL variables" (default SQLITE_MAX_VARIABLE_NUMBER = 999)
-	batchSize := int(999 / (countTokens + 1))
+	batchSize := int(SqliteMaxParameters / (countTokens + 1))
 
 	// TODO code duplication
 	fields := make([]string, countTokens+1)
@@ -876,10 +756,10 @@ func (e *Enforcer) updateDB() error {
 		}
 
 		if (i%batchSize == 0 && i != 0) || i == policyLen-1 {
-			query := fmt.Sprintf("INSERT INTO %s (%s) VALUES ", TableName, strings.Join(fields, ",")) +
+			query := fmt.Sprintf("INSERT INTO %s (%s) VALUES ", RuleTableName, strings.Join(fields, ",")) +
 				strings.Join(valuesStatements, ",")
 
-			if _, err := e.sqliteDB.Exec(query, values...); err != nil {
+			if _, err := e.ruleDB.Exec(query, values...); err != nil {
 				return err
 			}
 
@@ -891,30 +771,9 @@ func (e *Enforcer) updateDB() error {
 	}
 
 	return nil
-
-	/*
-	rows, err := db.Query("select id from policy")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id int
-		err = rows.Scan(&id)
-		if err != nil {
-			return nil, err
-		}
-		fmt.Println("=>", id)
-	}
-	err = rows.Err()
-	if err != nil {
-		return nil, err
-	}
-	*/
 }
 
-// TODO PROBLÈME : quand on va supprimer des policies de l'array, ça va fausser la correspondance entre index en db et index dans l'array !!!
-func (e *Enforcer) addPolicyToDB(ruleId int, rule []string) error {
+func (e *Enforcer) addRuleToDB(ruleId int, rule []string) error {
 	countTokens := len(e.model["p"]["p"].Tokens)
 	// TODO code duplication
 	fields := make([]string, countTokens+1)
@@ -927,7 +786,7 @@ func (e *Enforcer) addPolicyToDB(ruleId int, rule []string) error {
 	}
 
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		TableName, strings.Join(fields, ","), strings.Join(questionMarks, ","))
+		RuleTableName, strings.Join(fields, ","), strings.Join(questionMarks, ","))
 
 	// TODO make sure len(rule) == len(tokens)
 	values := make([]interface{}, len(rule)+1)
@@ -936,140 +795,93 @@ func (e *Enforcer) addPolicyToDB(ruleId int, rule []string) error {
 		values[i+1] = v
 	}
 
-	if _, err := e.sqliteDB.Exec(query, values...); err != nil {
+	if _, err := e.ruleDB.Exec(query, values...); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-/*
-func (e *Enforcer) buildDB() (*memdb.MemDB, error) {
-	indexes := map[string]*memdb.IndexSchema{}
-	indexes["id"] = &memdb.IndexSchema{
-		Name:    "id",
-		Unique:  true,
-		Indexer: &memdb.IntFieldIndex{Field: "Id"},
-	}
-	for _, token := range e.model["p"]["p"].Tokens {
-		indexes[token] = &memdb.IndexSchema{
-			Name:    token,
-			Unique:  false,
-			Indexer: &memdb.StringFieldIndex{Field: strings.Title(token)},
+func (e *Enforcer) deleteRulesFromDB(ruleIds []int) error {
+	countRules := len(ruleIds)
+
+	questionMarks := []string{}
+	values := []interface{}{}
+
+	for i, ruleId := range ruleIds {
+		questionMarks = append(questionMarks, "?")
+		values = append(values, ruleId)
+
+		if (i%SqliteMaxParameters == 0 && i != 0) || i == countRules-1 {
+			query := fmt.Sprintf("DELETE FROM %s WHERE id IN (%s)", RuleTableName, strings.Join(questionMarks, ","))
+
+			if _, err := e.ruleDB.Exec(query, values...); err != nil {
+				return err
+			}
+
+			questionMarks = []string{}
+			values = []interface{}{}
 		}
 	}
 
-	schema := &memdb.DBSchema{
-		Tables: map[string]*memdb.TableSchema{
-			"policy": &memdb.TableSchema{
-				Name:    "policy",
-				Indexes: indexes,
-			},
-		},
-	}
-
-	db, err := memdb.NewMemDB(schema)
-	if err != nil {
-		return nil, err
-	}
-
-	txn := db.Txn(true)
-
-	builder := dynamicstruct.NewStruct()
-	builder = builder.AddField("Id", 0, `json:"id"`)
-	for _, token := range e.model["p"]["p"].Tokens {
-		builder = builder.AddField(strings.Title(token), "", fmt.Sprintf(`json:"%s"`, token))
-	}
-
-	for i, policy := range e.model["p"]["p"].Policy {
-		p := map[string]interface{}{"id": i}
-		for j, token := range e.model["p"]["p"].Tokens {
-			p[token] = policy[j] // check p and policy have same length
-		}
-
-		data, err := json.Marshal(p)
-		if err != nil {
-			println(err.Error())
-		}
-
-		instance := builder.Build().New()
-		err = json.Unmarshal(data, &instance)
-		if err != nil {
-			println(err.Error())
-		}
-
-		err = txn.Insert("policy", instance)
-		if err != nil {
-			println(err.Error())
-		}
-	}
-
-	txn.Commit()
-
-	return db, nil
+	return nil
 }
-*/
 
-func (e *Enforcer) buildDeclarationsAndOverloads() ([]*exprpb.Decl, []*functions.Overload, error) {
+func (e *Enforcer) deleteRuleFromDB(rule []string) error {
+	// TODO make sure len(rule) = len(token)
+
+	countTokens := len(e.model["p"]["p"].Tokens)
+
+	conditions := make([]string, countTokens)
+	values := make([]interface{}, countTokens)
+
+	for i, token := range e.model["p"]["p"].Tokens {
+		conditions[i] = token + " = ?"
+		values[i] = rule[i]
+	}
+
+	// TODO make sure conditions is not empty (=> sql syntax error)
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s", RuleTableName, strings.Join(conditions, " AND "))
+
+	if _, err := e.ruleDB.Exec(query, values...); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *Enforcer) buildDeclarationsAndOverloads(identifiers []string) ([]*exprpb.Decl, []*functions.Overload, error) {
 	declarations := []*exprpb.Decl{}
+	for _, identifier := range identifiers {
+		declarations = append(declarations, decls.NewIdent(identifier, decls.Any, nil))
+	}
+	/*
 	for _, t := range e.model["r"]["r"].Tokens {
 		declarations = append(declarations, decls.NewIdent(t, decls.Any, nil))
 	}
 	for _, t := range e.model["p"]["p"].Tokens {
 		declarations = append(declarations, decls.NewIdent(t, decls.Any, nil))
 	}
+	*/
 
 	overloads := []*functions.Overload{}
 	for _, f := range e.fm {
 		declarations = append(declarations, f.Declaration)
-		overloads = append(overloads, f.Overload)
+
+		for _, overload := range f.Overloads {
+			overloads = append(overloads, overload)
+		}
 	}
 
 	if _, ok := e.model["g"]; ok {
 		for key, ast := range e.model["g"] {
-			rm := ast.RM
+			f := model.GenerateGFunction(key, ast.RM)
 
-			overloadId2Args := fmt.Sprintf("%s_string_string", key)
-			overloadId3Args := fmt.Sprintf("%s_string_string_string", key)
+			declarations = append(declarations, f.Declaration)
 
-			declarations = append(declarations,
-				decls.NewFunction(key,
-					decls.NewOverload(overloadId2Args,
-						[]*exprpb.Type{decls.String, decls.String}, decls.Bool),
-					decls.NewOverload(overloadId3Args,
-						[]*exprpb.Type{decls.String, decls.String, decls.String}, decls.Bool)))
-
-			overloads = append(overloads, &functions.Overload{
-				Operator: overloadId2Args,
-				Binary: func(val1 ref.Val, val2 ref.Val) ref.Val {
-					name1 := val1.(types.String).Value().(string)
-					name2 := val2.(types.String).Value().(string)
-
-					if rm == nil {
-						return types.Bool(name1 == name2)
-					}
-
-					res, _ := rm.HasLink(name1, name2)
-
-					return types.Bool(res)
-				}})
-			overloads = append(overloads, &functions.Overload{
-				Operator: overloadId3Args,
-				Function: func(values ...ref.Val) ref.Val {
-					name1 := values[0].(types.String).Value().(string)
-					name2 := values[1].(types.String).Value().(string)
-
-					if rm == nil {
-						return types.Bool(name1 == name2)
-					} else if len(values) == 2 {
-						res, _ := rm.HasLink(name1, name2)
-						return types.Bool(res)
-					} else {
-						domain := values[2].(types.String).Value().(string)
-						res, _ := rm.HasLink(name1, name2, domain)
-						return types.Bool(res)
-					}
-				}})
+			for _, overload := range f.Overloads {
+				overloads = append(overloads, overload)
+			}
 		}
 	}
 

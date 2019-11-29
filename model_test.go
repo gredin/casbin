@@ -168,7 +168,7 @@ func TestRBACModelWithDomains(t *testing.T) {
 	testDomainEnforce(t, e, "bob", "domain2", "data2", "write", true)
 }
 
-func _TestRBACModelWithDomainsAtRuntime(t *testing.T) {
+func TestRBACModelWithDomainsAtRuntime(t *testing.T) {
 	e, _ := NewEnforcer("examples/rbac_with_domains_model.conf")
 
 	e.AddPolicy("admin", "domain1", "data1", "read")
@@ -213,7 +213,7 @@ func _TestRBACModelWithDomainsAtRuntime(t *testing.T) {
 	testDomainEnforce(t, e, "bob", "domain2", "data2", "write", true)
 }
 
-func _TestRBACModelWithDomainsAtRuntimeMockAdapter(t *testing.T) {
+func TestRBACModelWithDomainsAtRuntimeMockAdapter(t *testing.T) {
 	adapter := fileadapter.NewAdapterMock("examples/rbac_with_domains_policy.csv")
 	e, _ := NewEnforcer("examples/rbac_with_domains_model.conf", adapter)
 
@@ -371,7 +371,7 @@ func newTestResource(name string, owner string) testResource {
 	return r
 }
 
-func _TestABACModel(t *testing.T) {
+func TestABACModel(t *testing.T) {
 	e, _ := NewEnforcer("examples/abac_model.conf")
 
 	data1 := newTestResource("data1", "alice")
@@ -432,21 +432,23 @@ func CustomFunction(key1 string, key2 string) bool {
 	}
 }
 
-func _TestKeyMatchCustomModel(t *testing.T) {
+func TestKeyMatchCustomModel(t *testing.T) {
 	e, _ := NewEnforcer("examples/keymatch_custom_model.conf", "examples/keymatch2_policy.csv")
 
 	e.AddFunction(model.Function{
 		Declaration: decls.NewFunction("keyMatchCustom",
 			decls.NewOverload("keyMatchCustom_string_string",
 				[]*exprpb.Type{decls.String, decls.String}, decls.Bool)),
-		Overload: &functions.Overload{
-			Operator: "keyMatchCustom_string_string",
-			Binary: func(lhs ref.Val, rhs ref.Val) ref.Val {
-				val1 := lhs.(types.String).Value().(string)
-				val2 := rhs.(types.String).Value().(string)
+		Overloads: []*functions.Overload{
+			{
+				Operator: "keyMatchCustom_string_string",
+				Binary: func(lhs ref.Val, rhs ref.Val) ref.Val {
+					val1 := lhs.(types.String).Value().(string)
+					val2 := rhs.(types.String).Value().(string)
 
-				return types.Bool(CustomFunction(val1, val2))
-			}},
+					return types.Bool(CustomFunction(val1, val2))
+				}},
+			},
 	})
 
 	testEnforce(t, e, "alice", "/alice_data2/myid", "GET", false)

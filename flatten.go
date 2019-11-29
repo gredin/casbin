@@ -1,6 +1,7 @@
 package casbin
 
-// TODO MERGE REQUEST TO https://github.com/jeremywohl/flatten/blob/master/flatten.go
+// TODO use "github.com/jeremywohl/flatten" dependency when pull request is merged
+// https://github.com/jeremywohl/flatten/pull/12
 
 import (
 	"encoding/json"

@@ -19,9 +19,6 @@ import (
 	"net"
 	"regexp"
 	"strings"
-
-	"github.com/Knetic/govaluate"
-	"github.com/casbin/casbin/v2/rbac"
 )
 
 // KeyMatch determines whether key1 matches the pattern of key2 (similar to RESTful path), key2 can contain a *.
@@ -162,22 +159,3 @@ func IPMatch(ip1 string, ip2 string) bool {
 	return cidr.Contains(objIP1)
 }
 
-// TODO not used anymore
-// GenerateGFunction is the factory method of the g(_, _) function.
-func GenerateGFunction(rm rbac.RoleManager) govaluate.ExpressionFunction {
-	return func(args ...interface{}) (interface{}, error) {
-		name1 := args[0].(string)
-		name2 := args[1].(string)
-
-		if rm == nil {
-			return name1 == name2, nil
-		} else if len(args) == 2 {
-			res, _ := rm.HasLink(name1, name2)
-			return res, nil
-		} else {
-			domain := args[2].(string)
-			res, _ := rm.HasLink(name1, name2, domain)
-			return res, nil
-		}
-	}
-}

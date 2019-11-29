@@ -3,98 +3,27 @@ package casbin
 import (
 	"encoding/json"
 	_ "errors"
-	"fmt"
-	"github.com/Knetic/govaluate"
 	"github.com/casbin/casbin/v2/util"
+	"github.com/google/cel-go/common"
 	_ "github.com/google/cel-go/common/operators"
+	"github.com/google/cel-go/parser"
 	_ "github.com/jeremywohl/flatten"
 	_ "reflect"
-	"testing"
-
 	"strconv"
+	"testing"
 	"time"
 )
 
-func IsTimeInRange(t time.Time, yearMin int, yearMax int) bool {
-	year := t.Year()
 
-	return yearMin <= year && year <= yearMax
-}
 
-func IsTimeInRangeFunc(args ...interface{}) (interface{}, error) {
-	t, _ := args[0].(time.Time)
-	yearMin, _ := strconv.Atoi(args[1].(string))
-	yearMax, _ := strconv.Atoi(args[2].(string))
+func __Test_Main(t *testing.T) {
 
-	return (bool)(IsTimeInRange(t, yearMin, yearMax)), nil
-}
+	expr, err := parser.Parse(common.NewTextSource("keyMatchCustom(r.obj, p.obj) && regexMatch(r.act, p.act)"))
 
-type User struct {
-	Id string
-}
-
-type Object struct {
-	Site     string
-	Category string
-	Brand    string
-	Time     time.Time
-}
-
-// https://github.com/hashicorp/terraform/blob/master/flatmap/flatten.go
-
-func EscapeMerger(top bool, prefix, subkey string) string {
-	key := prefix
-
-	if top {
-		key += util.EscapeDots(subkey)
-	} else {
-		key += "_" + util.EscapeDots(subkey)
-	}
-
-	return key
-}
-
-func FlattenStruct(o interface{}, prefix string) (map[string]interface{}, error) {
-	b, err := json.Marshal(o)
-	if err != nil {
-		println(err.Error())
-	}
-
-	var nested map[string]interface{}
-	err = json.Unmarshal(b, &nested)
-	if err != nil {
-		println(err.Error())
-	}
-
-	return Flatten(nested, prefix+"_", FuncMerger(EscapeMerger))
+	println(expr)
+	println(err)
 
 	/*
-	reflectType := reflect.TypeOf(s).Elem()
-	reflectValue := reflect.ValueOf(s).Elem()
-
-	for i := 0; i < reflectType.NumField(); i++ {
-		typeName := reflectType.Field(i).Name
-
-		valueType := reflectValue.Field(i).Type()
-		valueValue := reflectValue.Field(i).Interface()
-
-		switch reflectValue.Field(i).Kind() {
-		case reflect.String:
-			fmt.Printf("%s : %s(%s)\n", typeName, valueValue, valueType)
-		case reflect.Int32:
-			fmt.Printf("%s : %i(%s)\n", typeName, valueValue, valueType)
-		case reflect.Struct:
-			fmt.Printf("%s : it is %s\n", typeName, valueType)
-			display(&valueValue)
-			v := valueValue := reflectValue.Field(i).Addr()
-			display(v.Interface())
-		}
-
-	}
-	*/
-}
-
-func _Test_Main(t *testing.T) {
 	exp, _ := govaluate.NewEvaluableExpression("a == b")
 	r, _ := exp.Evaluate(map[string]interface{}{
 		"a": "1",
@@ -102,6 +31,8 @@ func _Test_Main(t *testing.T) {
 	})
 
 	_ = r
+	*/
+
 	/*
 	obj := struct {
 		A_b map[string]string
@@ -115,9 +46,9 @@ func _Test_Main(t *testing.T) {
 	}
 	_ = f
 
-	println(util.EscapeDots("a.b"))
-	println(util.EscapeDots("a.b.c"))
-	println(util.EscapeDots("a_b.c.d_e"))
+	println(util.ReplaceDots("a.b"))
+	println(util.ReplaceDots("a.b.c"))
+	println(util.ReplaceDots("a_b.c.d_e"))
 
 	// go test -bench BenchmarkRBACModelMedium -benchmem -run=^$
 
@@ -223,6 +154,7 @@ func _Test_Main(t *testing.T) {
 	//govaluate.
 	*/
 
+	/*
 	enforcer, err := NewEnforcer("model.conf", "policy.csv")
 
 	if err != nil {
@@ -261,4 +193,84 @@ func _Test_Main(t *testing.T) {
 
 		fmt.Println()
 	}
+	*/
+}
+
+func IsTimeInRange(t time.Time, yearMin int, yearMax int) bool {
+	year := t.Year()
+
+	return yearMin <= year && year <= yearMax
+}
+
+func IsTimeInRangeFunc(args ...interface{}) (interface{}, error) {
+	t, _ := args[0].(time.Time)
+	yearMin, _ := strconv.Atoi(args[1].(string))
+	yearMax, _ := strconv.Atoi(args[2].(string))
+
+	return (bool)(IsTimeInRange(t, yearMin, yearMax)), nil
+}
+
+type User struct {
+	Id string
+}
+
+type Object struct {
+	Site     string
+	Category string
+	Brand    string
+	Time     time.Time
+}
+
+// https://github.com/hashicorp/terraform/blob/master/flatmap/flatten.go
+
+func EscapeMerger(top bool, prefix, subkey string) string {
+	key := prefix
+
+	if top {
+		key += util.ReplaceDots(subkey)
+	} else {
+		key += "_" + util.ReplaceDots(subkey)
+	}
+
+	return key
+}
+
+func FlattenStruct(o interface{}, prefix string) (map[string]interface{}, error) {
+	b, err := json.Marshal(o)
+	if err != nil {
+		println(err.Error())
+	}
+
+	var nested map[string]interface{}
+	err = json.Unmarshal(b, &nested)
+	if err != nil {
+		println(err.Error())
+	}
+
+	return Flatten(nested, prefix+"_", FuncMerger(EscapeMerger))
+
+	/*
+	reflectType := reflect.TypeOf(s).Elem()
+	reflectValue := reflect.ValueOf(s).Elem()
+
+	for i := 0; i < reflectType.NumField(); i++ {
+		typeName := reflectType.Field(i).Name
+
+		valueType := reflectValue.Field(i).Type()
+		valueValue := reflectValue.Field(i).Interface()
+
+		switch reflectValue.Field(i).Kind() {
+		case reflect.String:
+			fmt.Printf("%s : %s(%s)\n", typeName, valueValue, valueType)
+		case reflect.Int32:
+			fmt.Printf("%s : %i(%s)\n", typeName, valueValue, valueType)
+		case reflect.Struct:
+			fmt.Printf("%s : it is %s\n", typeName, valueType)
+			display(&valueValue)
+			v := valueValue := reflectValue.Field(i).Addr()
+			display(v.Interface())
+		}
+
+	}
+	*/
 }

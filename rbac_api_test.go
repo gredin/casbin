@@ -65,7 +65,7 @@ func testHasRole(t *testing.T, e *Enforcer, name string, role string, res bool) 
 	}
 }
 
-func _TestRoleAPI(t *testing.T) {
+func TestRoleAPI(t *testing.T) {
 	e, _ := NewEnforcer("examples/rbac_model.conf", "examples/rbac_policy.csv")
 
 	testGetRoles(t, e, "alice", []string{"data2_admin"})
@@ -144,7 +144,7 @@ func testHasPermission(t *testing.T, e *Enforcer, name string, permission []stri
 	}
 }
 
-func _TestPermissionAPI(t *testing.T) {
+func TestPermissionAPI(t *testing.T) {
 	e, _ := NewEnforcer("examples/basic_without_resources_model.conf", "examples/basic_without_resources_policy.csv")
 
 	testEnforceWithoutUsers(t, e, "alice", "read", true)

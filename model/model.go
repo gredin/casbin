@@ -54,12 +54,13 @@ func (model Model) AddDef(sec string, key string, value string) bool {
 	}
 
 	if sec == "r" || sec == "p" {
-		ast.Tokens = strings.Split(ast.Value, ", ")
+		ast.Tokens = strings.Split(ast.Value, ", ") // TODO sep ", " => "," (+ trim spaces)
+
 		for i := range ast.Tokens {
-			ast.Tokens[i] = key + "_" + util.EscapeDots(ast.Tokens[i])
+			ast.Tokens[i] = key + "_" + util.ReplaceDots(ast.Tokens[i])
 		}
 	} else {
-		ast.Value = util.RemoveComments(ast.Value) // TODO util.EscapeAssertion() not used anymore
+		ast.Value = util.RemoveComments(ast.Value)
 	}
 
 	_, ok := model[sec]

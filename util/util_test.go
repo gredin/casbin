@@ -18,9 +18,9 @@ import (
 	"testing"
 )
 
-func testEscapeAssertion(t *testing.T, s string, res string) {
+func testReplaceDots(t *testing.T, s string, res string) {
 	t.Helper()
-	myRes := EscapeAssertion(s)
+	myRes := ReplaceDots(s)
 	t.Logf("%s: %s", s, myRes)
 
 	if myRes != res {
@@ -29,19 +29,16 @@ func testEscapeAssertion(t *testing.T, s string, res string) {
 }
 
 func TestEscapeAssertion(t *testing.T) {
-	testEscapeAssertion(t, "r.attr.value == p.attr", "r_attr.value == p_attr")
-	testEscapeAssertion(t, "r.attp.value || p.attr", "r_attp.value || p_attr")
-	testEscapeAssertion(t, "r.attp.value &&p.attr", "r_attp.value &&p_attr")
-	testEscapeAssertion(t, "r.attp.value >p.attr", "r_attp.value >p_attr")
-	testEscapeAssertion(t, "r.attp.value <p.attr", "r_attp.value <p_attr")
-	testEscapeAssertion(t, "r.attp.value +p.attr", "r_attp.value +p_attr")
-	testEscapeAssertion(t, "r.attp.value -p.attr", "r_attp.value -p_attr")
-	testEscapeAssertion(t, "r.attp.value *p.attr", "r_attp.value *p_attr")
-	testEscapeAssertion(t, "r.attp.value /p.attr", "r_attp.value /p_attr")
-	testEscapeAssertion(t, "!r.attp.value /p.attr", "!r_attp.value /p_attr")
-	testEscapeAssertion(t, "g(r.sub, p.sub) == p.attr", "g(r_sub, p_sub) == p_attr")
-	testEscapeAssertion(t, "g(r.sub,p.sub) == p.attr", "g(r_sub,p_sub) == p_attr")
-	testEscapeAssertion(t, "(r.attp.value || p.attr)p.u", "(r_attp.value || p_attr)p_u")
+	testReplaceDots(t, "attr", "attr")
+	testReplaceDots(t, "one.two", "one_two")
+	testReplaceDots(t, "one.two.three", "one_two_three")
+	testReplaceDots(t, "one_two", "one__two")
+	testReplaceDots(t, "one_two_three", "one__two__three")
+	testReplaceDots(t, "one.two_three.four", "one_two__three_four")
+	testReplaceDots(t, "one..two", "one___two")
+	testReplaceDots(t, "one...two", "one_____two")
+	testReplaceDots(t, "one__two", "one____two")
+	testReplaceDots(t, "one___two", "one______two")
 }
 
 func testRemoveComments(t *testing.T, s string, res string) {

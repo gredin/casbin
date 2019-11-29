@@ -258,10 +258,10 @@ func (e *Enforcer) RemoveFilteredNamedGroupingPolicy(ptype string, fieldIndex in
 }
 
 // TODO should not exist because all funcs should be provided at instantiation of Enforcer
-// TODO if it exists, it should cause an update of decls, overloads, etc. ?
+// TODO but if it exists, it should cause an update of decls, overloads, etc. ?
 // AddFunction adds a customized function.
 func (e *Enforcer) AddFunction(function model.Function) {
-	e.fm.AddFunction(function)
+	e.fm.AddFunction(function.Declaration, function.Overloads)
 
-	e.initialize() // TODO handle error
+	e.evaluator = nil // TODO necessary for reinit overloads
 }

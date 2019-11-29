@@ -22,29 +22,33 @@ import (
 )
 
 type Policy struct {
-	ruleMap       *linkedhashmap.Map
+	rules         *linkedhashmap.Map
 	autoincrement int
 	iterator      linkedhashmap.Iterator
 }
 
 func NewPolicy() *Policy {
-	ruleMap := linkedhashmap.New()
+	rules := linkedhashmap.New()
 
 	return &Policy{
-		ruleMap:       ruleMap,
+		rules:         rules,
 		autoincrement: 0,
-		iterator:      ruleMap.Iterator(),
+		iterator:      rules.Iterator(),
 	}
 }
 
+func (p *Policy) String() string {
+	return p.rules.String()
+}
+
 func (p *Policy) GetRules() [][]string {
-	values := make([][]string, p.ruleMap.Size())
+	values := make([][]string, p.rules.Size())
 	i := 0
 	var ok bool
 	for p.iterator.Begin(); p.iterator.Next(); {
 		values[i], ok = p.iterator.Value().([]string)
 		if !ok {
-			// TODO panic
+			panic("expected []string type")
 		}
 		i++
 	}
@@ -62,12 +66,12 @@ func (p *Policy) Next() bool {
 func (p *Policy) GetNext() (int, []string) {
 	k, ok := p.iterator.Key().(int)
 	if !ok {
-		// TODO panic
+		panic("expected int type")
 	}
 
 	v, ok := p.iterator.Value().([]string)
 	if !ok {
-		// TODO panic
+		panic("expected []string type")
 	}
 
 	return k, v
@@ -75,32 +79,32 @@ func (p *Policy) GetNext() (int, []string) {
 
 func (p *Policy) Put(rule []string) int {
 	i := p.autoincrement
-	p.ruleMap.Put(i, rule)
+	p.rules.Put(i, rule)
 	p.autoincrement++
 
 	return i
 }
 
 func (p *Policy) Get(ruleId int) ([]string, bool) {
-	r, ok := p.ruleMap.Get(ruleId)
+	r, ok := p.rules.Get(ruleId)
 	if !ok {
 		return []string{}, false
 	}
 
 	rule, ok := r.([]string)
 	if !ok {
-		// TODO panic
+		panic("expected []string type")
 	}
 
 	return rule, true
 }
 
 func (p *Policy) Len() int {
-	return p.ruleMap.Size()
+	return p.rules.Size()
 }
 
 func (p *Policy) Remove(i int) {
-	p.ruleMap.Remove(i)
+	p.rules.Remove(i)
 }
 
 // BuildRoleLinks initializes the roles in RBAC.
@@ -119,22 +123,22 @@ func (model Model) BuildRoleLinks(rm rbac.RoleManager) error {
 func (model Model) PrintPolicy() {
 	log.LogPrint("Policy:")
 	for key, ast := range model["p"] {
-		log.LogPrint(key, ": ", ast.Value, ": ", ast.Policy) // TODO ast.Policy.String()
+		log.LogPrint(key, ": ", ast.Value, ": ", ast.Policy)
 	}
 
 	for key, ast := range model["g"] {
-		log.LogPrint(key, ": ", ast.Value, ": ", ast.Policy) // TODO ast.Policy.String()
+		log.LogPrint(key, ": ", ast.Value, ": ", ast.Policy)
 	}
 }
 
 // ClearPolicy clears all current policy.
 func (model Model) ClearPolicy() {
 	for _, ast := range model["p"] {
-		ast.Policy = NewPolicy() // TODO
+		ast.Policy = NewPolicy()
 	}
 
 	for _, ast := range model["g"] {
-		ast.Policy = NewPolicy() // TODO
+		ast.Policy = NewPolicy()
 	}
 }
 
@@ -168,7 +172,7 @@ func (model Model) GetFilteredPolicy(sec string, ptype string, fieldIndex int, f
 	return res
 }
 
-// TODO can be optimized (use sqlite db)
+// TODO can be optimized (use sqlite db) - but this is MODEL package, not ENFORCER (...?)
 // HasPolicy determines whether a model has the specified policy rule.
 func (model Model) HasPolicy(sec string, ptype string, rule []string) bool {
 	policy := model[sec][ptype].Policy
@@ -195,7 +199,7 @@ func (model Model) AddPolicy(sec string, ptype string, rule []string) (bool, int
 }
 
 // RemovePolicy removes a policy rule from the model.
-func (model Model) RemovePolicy(sec string, ptype string, rule []string) bool {
+func (model Model) RemovePolicy(sec string, ptype string, rule []string) (bool, int) {
 	policy := model[sec][ptype].Policy
 
 	for policy.Begin(); policy.Next(); {
@@ -204,15 +208,15 @@ func (model Model) RemovePolicy(sec string, ptype string, rule []string) bool {
 		if util.ArrayEquals(rule, r) {
 			policy.Remove(i)
 
-			return true
+			return true, i
 		}
 	}
 
-	return false
+	return false, 0
 }
 
 // RemoveFilteredPolicy removes policy rules based on field filters from the model.
-func (model Model) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) bool {
+func (model Model) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) (bool, []int) {
 	foundIndexes := []int{}
 	res := false
 
@@ -240,7 +244,7 @@ func (model Model) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int
 		policy.Remove(i)
 	}
 
-	return res
+	return res, foundIndexes
 }
 
 // GetValuesForFieldInPolicy gets all values for a field for all rules in a policy, duplicated values are removed.

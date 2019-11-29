@@ -68,7 +68,7 @@ func TestModelError(t *testing.T) {
 //	}
 //}
 
-func _TestEnforceError(t *testing.T) {
+func TestEnforceError(t *testing.T) {
 	e, _ := NewEnforcer("examples/basic_model.conf", "examples/basic_policy.csv")
 
 	_, err := e.Enforce("wrong", "wrong")

@@ -6,18 +6,30 @@ import (
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
-func FlattenExpr(expr *exprpb.Expr) (*exprpb.Expr, error) {
+func FlattenExpr(expr *exprpb.Expr) (*exprpb.Expr, []string, error) {
+	identifiers := []string{}
+
+	flatExpr, err := flattenExpr(expr, identifiers)
+
+	return flatExpr, identifiers, err
+}
+
+func flattenExpr(expr *exprpb.Expr, identifiers []string) (*exprpb.Expr, error) {
 	switch expr.GetExprKind().(type) {
 	case *exprpb.Expr_ConstExpr:
 		return expr, nil
 	case *exprpb.Expr_IdentExpr:
 		e := expr.GetIdentExpr()
 
+		newName := util.ReplaceDots(e.Name)
+
+		identifiers = append(identifiers, newName)
+
 		return &exprpb.Expr{
 			Id: expr.Id,
 			ExprKind: &exprpb.Expr_IdentExpr{
 				IdentExpr: &exprpb.Expr_Ident{
-					Name: util.EscapeDots(e.Name),
+					Name: newName,
 				},
 			},
 		}, nil
@@ -26,11 +38,13 @@ func FlattenExpr(expr *exprpb.Expr) (*exprpb.Expr, error) {
 
 		identExpr, err := flattenSelectExpr(e)
 		if err != nil {
-
+			// TODO
 		}
 
+		identifiers = append(identifiers, identExpr.IdentExpr.Name)
+
 		return &exprpb.Expr{
-			Id: expr.Id,
+			Id:       expr.Id,
 			ExprKind: identExpr,
 		}, nil
 	case *exprpb.Expr_CallExpr:
@@ -41,7 +55,7 @@ func FlattenExpr(expr *exprpb.Expr) (*exprpb.Expr, error) {
 
 		flatArgs := []*exprpb.Expr{}
 		for _, arg := range e.Args {
-			flatArg, err := FlattenExpr(arg)
+			flatArg, err := flattenExpr(arg, identifiers)
 			if err != nil {
 
 			}
@@ -63,7 +77,7 @@ func FlattenExpr(expr *exprpb.Expr) (*exprpb.Expr, error) {
 
 		flatElements := []*exprpb.Expr{}
 		for _, elem := range e.Elements {
-			flatElement, err := FlattenExpr(elem)
+			flatElement, err := flattenExpr(elem, identifiers)
 			if err != nil {
 
 			}
@@ -92,7 +106,7 @@ func flattenSelectExpr(exprSelect *exprpb.Expr_Select) (*exprpb.Expr_IdentExpr, 
 	case *exprpb.Expr_IdentExpr:
 		return &exprpb.Expr_IdentExpr{
 			IdentExpr: &exprpb.Expr_Ident{
-				Name: util.EscapeDots(exprSelect.Operand.GetIdentExpr().Name) + "_" + util.EscapeDots(exprSelect.Field),
+				Name: util.ReplaceDots(exprSelect.Operand.GetIdentExpr().Name) + "_" + util.ReplaceDots(exprSelect.Field),
 			},
 		}, nil
 	case *exprpb.Expr_SelectExpr:
@@ -103,7 +117,7 @@ func flattenSelectExpr(exprSelect *exprpb.Expr_Select) (*exprpb.Expr_IdentExpr, 
 
 		return &exprpb.Expr_IdentExpr{
 			IdentExpr: &exprpb.Expr_Ident{
-				Name: identExpr.IdentExpr.Name + "_" + util.EscapeDots(exprSelect.Field),
+				Name: identExpr.IdentExpr.Name + "_" + util.ReplaceDots(exprSelect.Field),
 			},
 		}, nil
 	default:
