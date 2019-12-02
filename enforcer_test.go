@@ -361,13 +361,12 @@ func TestEnforceConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Simulate concurrency (maybe use a timer?)
-	for i := 1; i <= 1000; i++ {
+	for i := 1; i <= 10000; i++ {
 		wg.Add(1)
-		go func(i int) {
-			println(i)
+		go func() {
 			e.Enforce("user501", "data9", "read")
 			wg.Done()
-		}(i)
+		}()
 	}
 
 	wg.Wait()

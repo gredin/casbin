@@ -207,6 +207,8 @@ func (e *Enforcer) initialize() error {
 		return err
 	}
 
+	e.initializeEvaluator() // TODO ignore error because of later AddFunction(...)
+
 	return nil
 }
 
@@ -452,7 +454,7 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		return true, nil
 	}
 
-	if e.evaluator == nil {
+	if e.evaluator == nil { // TODO why here? (because of later AddFunction(...)
 		err := e.initializeEvaluator()
 		if err != nil {
 			return false, err
