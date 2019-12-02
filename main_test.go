@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	_ "errors"
 	"github.com/casbin/casbin/v2/util"
-	"github.com/google/cel-go/common"
 	_ "github.com/google/cel-go/common/operators"
-	"github.com/google/cel-go/parser"
 	_ "github.com/jeremywohl/flatten"
 	_ "reflect"
 	"strconv"
@@ -18,12 +16,23 @@ import (
 
 func __Test_Main(t *testing.T) {
 
+	m := map[string]map[string]string{
+		"p": {
+			"p2": "a",
+		},
+	}
+
+	e, ok := m["p"]["p"]
+
+	println(e)
+	println(ok)
+
+	/*
 	expr, err := parser.Parse(common.NewTextSource("keyMatchCustom(r.obj, p.obj) && regexMatch(r.act, p.act)"))
 
 	println(expr)
 	println(err)
 
-	/*
 	exp, _ := govaluate.NewEvaluableExpression("a == b")
 	r, _ := exp.Evaluate(map[string]interface{}{
 		"a": "1",

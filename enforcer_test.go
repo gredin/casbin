@@ -15,11 +15,10 @@
 package casbin
 
 import (
+	"github.com/casbin/casbin/v2/model"
+	"github.com/casbin/casbin/v2/persist/file-adapter"
 	"sync"
 	"testing"
-
-	"github.com/casbin/casbin/v2/model"
-	fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
 )
 
 func TestKeyMatchModelInMemory(t *testing.T) {
@@ -295,6 +294,9 @@ func TestEnableAutoSave(t *testing.T) {
 	// Because AutoSave is disabled, the policy change only affects the policy in Casbin enforcer,
 	// it doesn't affect the policy in the storage.
 	e.RemovePolicy("alice", "data1", "read")
+
+	//testEnforce(t, e, "alice", "data1", "read", false)
+
 	// Reload the policy from the storage to see the effect.
 	e.LoadPolicy()
 	testEnforce(t, e, "alice", "data1", "read", true)
@@ -346,7 +348,7 @@ func TestRoleLinks(t *testing.T) {
 	e.Enforce("user501", "data9", "read")
 }
 
-func _TestEnforceConcurrency(t *testing.T) {
+func TestEnforceConcurrency(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("Enforce is not concurrent")
@@ -359,18 +361,19 @@ func _TestEnforceConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Simulate concurrency (maybe use a timer?)
-	for i := 1; i <= 10000; i++ {
+	for i := 1; i <= 1000; i++ {
 		wg.Add(1)
-		go func() {
+		go func(i int) {
+			println(i)
 			e.Enforce("user501", "data9", "read")
 			wg.Done()
-		}()
+		}(i)
 	}
 
 	wg.Wait()
 }
 
-func _TestGetAndSetModel(t *testing.T) {
+func TestGetAndSetModel(t *testing.T) {
 	e, _ := NewEnforcer("examples/basic_model.conf", "examples/basic_policy.csv")
 	e2, _ := NewEnforcer("examples/basic_with_root_model.conf", "examples/basic_policy.csv")
 
@@ -381,7 +384,7 @@ func _TestGetAndSetModel(t *testing.T) {
 	testEnforce(t, e, "root", "data1", "read", true)
 }
 
-func _TestGetAndSetAdapterInMem(t *testing.T) {
+func TestGetAndSetAdapterInMem(t *testing.T) {
 	e, _ := NewEnforcer("examples/basic_model.conf", "examples/basic_policy.csv")
 	e2, _ := NewEnforcer("examples/basic_model.conf", "examples/basic_inverse_policy.csv")
 

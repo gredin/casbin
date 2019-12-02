@@ -200,7 +200,14 @@ func (e *Enforcer) initialize() error {
 	}
 	e.ruleDB = ruleDB
 
-	return err
+	p, ok := e.model["p"]["p"]
+	if ok && p.Policy != nil && p.Policy.Len() > 0 { // TODO explain it is useful for SetModel(...)
+		err = e.updateDB()
+
+		return err
+	}
+
+	return nil
 }
 
 func (e *Enforcer) initializeEvaluator() error {
@@ -320,11 +327,21 @@ func (e *Enforcer) SetEffector(eft effect.Effector) {
 // ClearPolicy clears all policy.
 func (e *Enforcer) ClearPolicy() {
 	e.model.ClearPolicy()
+
+	e.ClearDB() // TODO handle error
+}
+
+func (e *Enforcer) ClearDB() error {
+	query := fmt.Sprintf("DELETE FROM %s", RuleTableName)
+
+	_, err := e.ruleDB.Exec(query)
+
+	return err
 }
 
 // LoadPolicy reloads the policy from file/database.
 func (e *Enforcer) LoadPolicy() error {
-	e.model.ClearPolicy()
+	e.ClearPolicy()
 	if err := e.adapter.LoadPolicy(e.model); err != nil && err.Error() != "invalid file path, file path cannot be empty" {
 		return err
 	}
@@ -338,16 +355,13 @@ func (e *Enforcer) LoadPolicy() error {
 	}
 
 	err := e.updateDB()
-	if err != nil {
-		return err
-	}
 
-	return nil
+	return err
 }
 
 // LoadFilteredPolicy reloads a filtered policy from file/database.
 func (e *Enforcer) LoadFilteredPolicy(filter interface{}) error {
-	e.model.ClearPolicy()
+	e.ClearPolicy()
 
 	var filteredAdapter persist.FilteredAdapter
 
