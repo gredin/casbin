@@ -26,7 +26,6 @@ import (
 	"github.com/google/cel-go/interpreter/functions"
 	"github.com/google/cel-go/parser"
 	_ "github.com/mattn/go-sqlite3"
-	"strconv"
 	"strings"
 
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
@@ -40,11 +39,6 @@ import (
 	"github.com/casbin/casbin/v2/rbac/default-role-manager"
 )
 
-const (
-	RuleTableName = "rule"
-	SqliteMaxParameters = 999
-)
-
 // Enforcer is the main interface for authorization enforcement and policy management.
 type Enforcer struct {
 	modelPath string
@@ -54,7 +48,6 @@ type Enforcer struct {
 
 	evaluator            cel.Program
 	ruleConditionBuilder func(map[string]interface{}) (string, error)
-	ruleDB               *sql.DB
 
 	adapter persist.Adapter
 	watcher persist.Watcher
@@ -200,7 +193,7 @@ func (e *Enforcer) initialize() error {
 	}
 	e.ruleDB = ruleDB
 
-	p, ok := e.model["p"]["p"]
+	p, ok := e.model.GetAssertion("p", "p")
 	if ok && p.Policy != nil && p.Policy.Len() > 0 { // TODO explain it is useful for SetModel(...)
 		err = e.updateDB()
 
@@ -213,7 +206,8 @@ func (e *Enforcer) initialize() error {
 }
 
 func (e *Enforcer) initializeEvaluator() error {
-	rawExpr := e.model["m"]["m"].Value // TODO might be empty "" - might be provided by EnforceWithMatcher(matcher string)
+	m, _ := e.model.GetAssertion("m", "m")
+	rawExpr := m.Value // TODO might be empty "" - might be provided by EnforceWithMatcher(matcher string)
 
 	parsedExpr, errs := parser.Parse(common.NewTextSource(rawExpr))
 	if len(errs.GetErrors()) != 0 {
@@ -269,7 +263,7 @@ func (e *Enforcer) initializeEvaluator() error {
 // LoadModel reloads the model from the model CONF file.
 // Because the policy is attached to a model, so the policy is invalidated and needs to be reloaded by calling LoadPolicy().
 func (e *Enforcer) LoadModel() error {
-	model, err := model.NewModelFromFile(e.modelPath)
+	model, err := model.NewModelFromFile(e.modelPath) // TODO
 	if err != nil {
 		return err
 	}
@@ -331,14 +325,6 @@ func (e *Enforcer) ClearPolicy() {
 	e.model.ClearPolicy()
 
 	e.ClearDB() // TODO handle error
-}
-
-func (e *Enforcer) ClearDB() error {
-	query := fmt.Sprintf("DELETE FROM %s", RuleTableName)
-
-	_, err := e.ruleDB.Exec(query)
-
-	return err
 }
 
 // LoadPolicy reloads the policy from file/database.
@@ -461,17 +447,18 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		}
 	}
 
-	if len(rvals) != len(e.model["r"]["r"].Tokens) {
+	assertionRequest, _ := e.model.GetAssertion("r", "r")
+	if len(rvals) != len(assertionRequest.Tokens) {
 		return false, fmt.Errorf(
 			"invalid request size: expected %d, got %d, rvals: %v",
-			len(e.model["r"]["r"].Tokens),
+			len(assertionRequest.Tokens),
 			len(rvals),
 			rvals)
 	}
 
 	request := map[string]interface{}{}
 	for j, rval := range rvals {
-		token := e.model["r"]["r"].Tokens[j]
+		token := assertionRequest.Tokens[j]
 		request[token] = rval
 	}
 
@@ -501,11 +488,12 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		return false, err
 	}
 	*/
-	pTokens := e.model["p"]["p"].Tokens
+	assertionPolicy, _ := e.model.GetAssertion("p", "p")
+	pTokens := assertionPolicy.Tokens
 	pTokensLen := len(pTokens)
 	var policyEffects []effect.Effect
 	var matcherResults []float64
-	if policyLen := e.model["p"]["p"].Policy.Len(); policyLen != 0 {
+	if policyLen := assertionPolicy.Policy.Len(); policyLen != 0 {
 		sqlCondition, err := e.ruleConditionBuilder(flatRequest)
 		if err != nil {
 			// TODO
@@ -547,7 +535,7 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 		vars := flatRequest
 
 		for i, ruleId := range ruleIds {
-			pvals, ok := e.model["p"]["p"].Policy.Get(ruleId)
+			pvals, ok := assertionPolicy.Policy.Get(ruleId)
 			if !ok {
 				// TODO ??!! (consistency issue between DB and model["p"]["p"].Policy)
 			}
@@ -622,7 +610,8 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 				policyEffects[i] = effect.Allow
 			}
 
-			if e.model["e"]["e"].Value == effect.Priority {
+			assertionEffect, _ := e.model.GetAssertion("e", "e")
+			if assertionEffect.Value == effect.Priority {
 				break
 			}
 		}
@@ -659,7 +648,8 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 
 	// log.LogPrint("Rule Results: ", policyEffects)
 
-	result, err := e.eft.MergeEffects(e.model["e"]["e"].Value, policyEffects, matcherResults)
+	assertionEffect, _ := e.model.GetAssertion("e", "e")
+	result, err := e.eft.MergeEffects(assertionEffect.Value, policyEffects, matcherResults)
 	if err != nil {
 		return false, err
 	}
@@ -694,174 +684,18 @@ func (e *Enforcer) EnforceWithMatcher(matcher string, rvals ...interface{}) (boo
 	return e.enforce(matcher, rvals...)
 }
 
-func (e *Enforcer) createDB() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		return nil, err
-	}
-	//defer db.Close()
-
-	sqlColumns := []string{"id INTEGER NOT NULL PRIMARY KEY"}
-	sqlIndexes := []string{}
-
-	countTokens := len(e.model["p"]["p"].Tokens)
-	fields := make([]string, countTokens+1)
-	fields[0] = "id"
-	questionMarks := make([]string, countTokens+1)
-	questionMarks[0] = "?"
-
-	for i, token := range e.model["p"]["p"].Tokens {
-		sqlColumns = append(sqlColumns, fmt.Sprintf("%s TEXT", token))
-		sqlIndexes = append(sqlIndexes, fmt.Sprintf("CREATE INDEX %s_index ON %s (%s)", token, RuleTableName, token))
-
-		fields[i+1] = token
-		questionMarks[i+1] = "?"
+func (e *Enforcer) buildCheckedAst(rawExpr string, env cel.Env) (cel.Ast, error) {
+	parsed, issues := env.Parse(rawExpr)
+	if issues != nil && issues.Err() != nil {
+		return nil, issues.Err()
 	}
 
-	sqlStmt := fmt.Sprintf("BEGIN; CREATE TABLE %s (%s); %s; COMMIT;",
-		RuleTableName,
-		strings.Join(sqlColumns, ","),
-		strings.Join(sqlIndexes, ";"))
-
-	_, err = db.Exec(sqlStmt)
-	if err != nil {
-		return nil, err
+	checked, issues := env.Check(parsed)
+	if issues != nil && issues.Err() != nil {
+		return nil, issues.Err()
 	}
 
-	return db, nil
-}
-
-func (e *Enforcer) updateDB() error {
-	countTokens := len(e.model["p"]["p"].Tokens)
-	// frequent inserts in order to avoid "too many SQL variables" (default SQLITE_MAX_VARIABLE_NUMBER = 999)
-	batchSize := int(SqliteMaxParameters / (countTokens + 1))
-
-	// TODO code duplication
-	fields := make([]string, countTokens+1)
-	fields[0] = "id"
-	questionMarks := make([]string, countTokens+1)
-	questionMarks[0] = "?"
-	for i, token := range e.model["p"]["p"].Tokens {
-		fields[i+1] = token
-		questionMarks[i+1] = "?"
-	}
-
-	valuesStatements := []string{}
-	values := []interface{}{}
-
-	policy := e.model["p"]["p"].Policy
-	policyLen := e.model["p"]["p"].Policy.Len()
-	sqlVariableNumber := 1
-	sqlVariables := make([]string, countTokens+1)
-
-	i := 0
-	for policy.Begin(); policy.Next(); {
-		ruleId, rule := policy.GetNext()
-
-		for j := 0; j < countTokens+1; j++ {
-			sqlVariables[j] = "$" + strconv.Itoa(sqlVariableNumber)
-			sqlVariableNumber++
-		}
-		valuesStatements = append(valuesStatements, "("+strings.Join(sqlVariables, ",")+")")
-
-		values = append(values, ruleId)
-		for _, v := range rule {
-			values = append(values, v)
-		}
-
-		if (i%batchSize == 0 && i != 0) || i == policyLen-1 {
-			query := fmt.Sprintf("INSERT INTO %s (%s) VALUES ", RuleTableName, strings.Join(fields, ",")) +
-				strings.Join(valuesStatements, ",")
-
-			if _, err := e.ruleDB.Exec(query, values...); err != nil {
-				return err
-			}
-
-			valuesStatements = []string{}
-			values = []interface{}{}
-		}
-
-		i++
-	}
-
-	return nil
-}
-
-func (e *Enforcer) addRuleToDB(ruleId int, rule []string) error {
-	countTokens := len(e.model["p"]["p"].Tokens)
-	// TODO code duplication
-	fields := make([]string, countTokens+1)
-	fields[0] = "id"
-	questionMarks := make([]string, countTokens+1)
-	questionMarks[0] = "?"
-	for i, token := range e.model["p"]["p"].Tokens {
-		fields[i+1] = token
-		questionMarks[i+1] = "?"
-	}
-
-	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		RuleTableName, strings.Join(fields, ","), strings.Join(questionMarks, ","))
-
-	// TODO make sure len(rule) == len(tokens)
-	values := make([]interface{}, len(rule)+1)
-	values[0] = ruleId
-	for i, v := range rule {
-		values[i+1] = v
-	}
-
-	if _, err := e.ruleDB.Exec(query, values...); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (e *Enforcer) deleteRulesFromDB(ruleIds []int) error {
-	countRules := len(ruleIds)
-
-	questionMarks := []string{}
-	values := []interface{}{}
-
-	for i, ruleId := range ruleIds {
-		questionMarks = append(questionMarks, "?")
-		values = append(values, ruleId)
-
-		if (i%SqliteMaxParameters == 0 && i != 0) || i == countRules-1 {
-			query := fmt.Sprintf("DELETE FROM %s WHERE id IN (%s)", RuleTableName, strings.Join(questionMarks, ","))
-
-			if _, err := e.ruleDB.Exec(query, values...); err != nil {
-				return err
-			}
-
-			questionMarks = []string{}
-			values = []interface{}{}
-		}
-	}
-
-	return nil
-}
-
-func (e *Enforcer) deleteRuleFromDB(rule []string) error {
-	// TODO make sure len(rule) = len(token)
-
-	countTokens := len(e.model["p"]["p"].Tokens)
-
-	conditions := make([]string, countTokens)
-	values := make([]interface{}, countTokens)
-
-	for i, token := range e.model["p"]["p"].Tokens {
-		conditions[i] = token + " = ?"
-		values[i] = rule[i]
-	}
-
-	// TODO make sure conditions is not empty (=> sql syntax error)
-	query := fmt.Sprintf("DELETE FROM %s WHERE %s", RuleTableName, strings.Join(conditions, " AND "))
-
-	if _, err := e.ruleDB.Exec(query, values...); err != nil {
-		return err
-	}
-
-	return nil
+	return checked, nil
 }
 
 func (e *Enforcer) buildDeclarationsAndOverloads(identifiers []string) ([]*exprpb.Decl, []*functions.Overload, error) {
@@ -887,8 +721,9 @@ func (e *Enforcer) buildDeclarationsAndOverloads(identifiers []string) ([]*exprp
 		}
 	}
 
-	if _, ok := e.model["g"]; ok {
-		for key, ast := range e.model["g"] {
+
+	if assertionG, ok := e.model.GetAssertionMap("g"); ok {
+		for key, ast := range assertionG {
 			f := model.GenerateGFunction(key, ast.RM)
 
 			declarations = append(declarations, f.Declaration)
@@ -901,18 +736,4 @@ func (e *Enforcer) buildDeclarationsAndOverloads(identifiers []string) ([]*exprp
 
 	return declarations, overloads, nil
 	//return cel.NewEnv(cel.Declarations(declarations...))
-}
-
-func (e *Enforcer) buildCheckedAst(rawExpr string, env cel.Env) (cel.Ast, error) {
-	parsed, issues := env.Parse(rawExpr)
-	if issues != nil && issues.Err() != nil {
-		return nil, issues.Err()
-	}
-
-	checked, issues := env.Check(parsed)
-	if issues != nil && issues.Err() != nil {
-		return nil, issues.Err()
-	}
-
-	return checked, nil
 }

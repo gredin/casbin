@@ -17,10 +17,10 @@ package effect
 import "errors"
 
 const (
-	AllowOverride = "some(where (p.eft == allow))"
-	DenyOverride  = "!some(where (p.eft == deny))"
-	AllowAndDeny  = "some(where (p.eft == allow)) && !some(where (p.eft == deny))"
-	Priority      = "priority(p.eft) || deny"
+       AllowOverride = "some(where (p.eft == allow))"
+       DenyOverride  = "!some(where (p.eft == deny))"
+       AllowAndDeny  = "some(where (p.eft == allow)) && !some(where (p.eft == deny))"
+       Priority      = "priority(p.eft) || deny"
 )
 
 // DefaultEffector is default effector for Casbin.

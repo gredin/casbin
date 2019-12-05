@@ -15,10 +15,11 @@
 package casbin
 
 import (
-	"github.com/casbin/casbin/v2/model"
-	"github.com/casbin/casbin/v2/persist/file-adapter"
 	"sync"
 	"testing"
+
+	"github.com/casbin/casbin/v2/model"
+	fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
 )
 
 func TestKeyMatchModelInMemory(t *testing.T) {
@@ -30,9 +31,7 @@ func TestKeyMatchModelInMemory(t *testing.T) {
 
 	a := fileadapter.NewAdapter("examples/keymatch_policy.csv")
 
-	e, err := NewEnforcer(m, a)
-
-	_= err
+	e, _ := NewEnforcer(m, a)
 
 	testEnforce(t, e, "alice", "/alice_data/resource1", "GET", true)
 	testEnforce(t, e, "alice", "/alice_data/resource1", "POST", true)
@@ -204,9 +203,7 @@ func TestNotUsedRBACModelInMemory(t *testing.T) {
 
 func TestMatcherUsingInOperator(t *testing.T) {
 	// From file config
-	e, err := NewEnforcer("examples/rbac_model_matcher_using_in_op.conf")
-
-	_ =err
+	e, _ := NewEnforcer("examples/rbac_model_matcher_using_in_op.conf")
 
 	e.AddPermissionForUser("alice", "data1", "read")
 
@@ -294,8 +291,6 @@ func TestEnableAutoSave(t *testing.T) {
 	// Because AutoSave is disabled, the policy change only affects the policy in Casbin enforcer,
 	// it doesn't affect the policy in the storage.
 	e.RemovePolicy("alice", "data1", "read")
-
-	//testEnforce(t, e, "alice", "data1", "read", false)
 
 	// Reload the policy from the storage to see the effect.
 	e.LoadPolicy()

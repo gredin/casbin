@@ -20,19 +20,9 @@ const (
 
 // addPolicy adds a rule to the current policy.
 func (e *Enforcer) addPolicy(sec string, ptype string, rule []string) (bool, error) {
-	ruleAdded, ruleId := e.model.AddPolicy(sec, ptype, rule)
+	ruleAdded, _ := e.model.AddPolicy(sec, ptype, rule)
 	if !ruleAdded {
 		return ruleAdded, nil
-	}
-
-	if sec == "p" {
-		// TODO db does not support "ptype"
-		// TODO but "Currently only single policy definition p is supported. p2 is yet not supported." https://casbin.org/docs/en/syntax-for-models#policy-definition
-		err := e.addRuleToDB(ruleId, rule)
-		if err != nil {
-			// TODO not good because adapter policy addition is not called
-			return ruleAdded, err
-		}
 	}
 
 	if e.adapter != nil && e.autoSave {
@@ -55,19 +45,9 @@ func (e *Enforcer) addPolicy(sec string, ptype string, rule []string) (bool, err
 
 // removePolicy removes a rule from the current policy.
 func (e *Enforcer) removePolicy(sec string, ptype string, rule []string) (bool, error) {
-	ruleRemoved, ruleId := e.model.RemovePolicy(sec, ptype, rule)
+	ruleRemoved, _ := e.model.RemovePolicy(sec, ptype, rule)
 	if !ruleRemoved {
 		return ruleRemoved, nil
-	}
-
-	if sec == "p" {
-		// TODO db does not support "ptype"
-		// TODO but "Currently only single policy definition p is supported. p2 is yet not supported." https://casbin.org/docs/en/syntax-for-models#policy-definition
-		err := e.deleteRulesFromDB([]int{ruleId})
-		if err != nil {
-			// TODO not good because adapter policy removal is not called
-			return ruleRemoved, err
-		}
 	}
 
 	if e.adapter != nil && e.autoSave {

@@ -54,7 +54,8 @@ func (a *Adapter) SavePolicy(model model.Model) error {
 
 	var tmp bytes.Buffer
 
-	for ptype, ast := range model["p"] {
+	assertionMap, _ := model.GetAssertionMap("p")
+	for ptype, ast := range assertionMap {
 		policy := ast.Policy
 
 		for policy.Begin(); policy.Next(); {
@@ -66,7 +67,8 @@ func (a *Adapter) SavePolicy(model model.Model) error {
 		}
 	}
 
-	for ptype, ast := range model["g"] {
+	assertionMap, _ = model.GetAssertionMap("g")
+	for ptype, ast := range assertionMap {
 		policy := ast.Policy
 
 		for policy.Begin(); policy.Next(); {

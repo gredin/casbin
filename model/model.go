@@ -15,6 +15,7 @@
 package model
 
 import (
+	"github.com/casbin/casbin/v2/rbac"
 	"strconv"
 	"strings"
 
@@ -23,8 +24,28 @@ import (
 	"github.com/casbin/casbin/v2/util"
 )
 
+type Model interface {
+	AddDef(sec string, key string, value string) bool
+	AddPolicy(sec string, ptype string, rule []string) (bool, int)
+	BuildRoleLinks(rm rbac.RoleManager) error
+	ClearPolicy()
+	GetAssertionMap(key string) (AssertionMap, bool)
+	GetAssertion(sec string, key string) (*Assertion, bool)
+	GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) [][]string
+	GetPolicy(sec string, ptype string) [][]string
+	GetValuesForFieldInPolicy(sec string, ptype string, fieldIndex int) []string
+	GetValuesForFieldInPolicyAllTypes(sec string, fieldIndex int) []string
+	HasPolicy(sec string, ptype string, rule []string) bool
+	LoadModel(path string) error
+	LoadModelFromText(text string) error
+	PrintModel()
+	PrintPolicy()
+	RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) (bool, []int)
+	RemovePolicy(sec string, ptype string, rule []string) (bool, int)
+}
+
 // Model represents the whole access control model.
-type Model map[string]AssertionMap
+type AssertionModel map[string]AssertionMap
 
 // AssertionMap is the collection of assertions, can be "r", "p", "g", "e", "m".
 type AssertionMap map[string]*Assertion
@@ -37,13 +58,26 @@ var sectionNameMap = map[string]string{
 	"m": "matchers",
 }
 
-func loadAssertion(model Model, cfg config.ConfigInterface, sec string, key string) bool {
+func loadAssertion(model AssertionModel, cfg config.ConfigInterface, sec string, key string) bool {
 	value := cfg.String(sectionNameMap[sec] + "::" + key)
 	return model.AddDef(sec, key, value)
 }
 
+
+func (model AssertionModel) GetAssertionMap(key string) (AssertionMap, bool) {
+	assertionMap, ok := model[key]
+
+	return assertionMap, ok
+}
+
+func (model AssertionModel) GetAssertion(sec string, key string) (*Assertion, bool) {
+	assertion, ok := model[sec][key]
+
+	return assertion, ok
+}
+
 // AddDef adds an assertion to the model.
-func (model Model) AddDef(sec string, key string, value string) bool {
+func (model AssertionModel) AddDef(sec string, key string, value string) bool {
 	ast := Assertion{}
 	ast.Key = key
 	ast.Value = value
@@ -80,7 +114,7 @@ func getKeySuffix(i int) string {
 	return strconv.Itoa(i)
 }
 
-func loadSection(model Model, cfg config.ConfigInterface, sec string) {
+func loadSection(model AssertionModel, cfg config.ConfigInterface, sec string) {
 	i := 1
 	for {
 		if !loadAssertion(model, cfg, sec, sec+getKeySuffix(i)) {
@@ -92,14 +126,14 @@ func loadSection(model Model, cfg config.ConfigInterface, sec string) {
 }
 
 // NewModel creates an empty model.
-func NewModel() Model {
-	m := make(Model)
+func NewAssertionModel() AssertionModel {
+	m := make(AssertionModel)
 	return m
 }
 
 // NewModel creates a model from a .CONF file.
-func NewModelFromFile(path string) (Model, error) {
-	m := NewModel()
+func NewAssertionModelFromFile(path string) (AssertionModel, error) {
+	m := NewAssertionModel()
 
 	err := m.LoadModel(path)
 	if err != nil {
@@ -110,8 +144,8 @@ func NewModelFromFile(path string) (Model, error) {
 }
 
 // NewModel creates a model from a string which contains model text.
-func NewModelFromString(text string) (Model, error) {
-	m := NewModel()
+func NewAssertionModelFromString(text string) (AssertionModel, error) {
+	m := NewAssertionModel()
 
 	err := m.LoadModelFromText(text)
 	if err != nil {
@@ -122,7 +156,7 @@ func NewModelFromString(text string) (Model, error) {
 }
 
 // LoadModel loads the model from model CONF file.
-func (model Model) LoadModel(path string) error {
+func (model AssertionModel) LoadModel(path string) error {
 	cfg, err := config.NewConfig(path)
 	if err != nil {
 		return err
@@ -139,7 +173,7 @@ func (model Model) LoadModel(path string) error {
 }
 
 // LoadModelFromText loads the model from the text.
-func (model Model) LoadModelFromText(text string) error {
+func (model AssertionModel) LoadModelFromText(text string) error {
 	cfg, err := config.NewConfigFromText(text)
 	if err != nil {
 		return err
@@ -156,7 +190,7 @@ func (model Model) LoadModelFromText(text string) error {
 }
 
 // PrintModel prints the model to the log.
-func (model Model) PrintModel() {
+func (model AssertionModel) PrintModel() {
 	log.LogPrint("Model:")
 	for k, v := range model {
 		for i, j := range v {

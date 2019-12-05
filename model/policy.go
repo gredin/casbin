@@ -108,7 +108,7 @@ func (p *Policy) Remove(i int) {
 }
 
 // BuildRoleLinks initializes the roles in RBAC.
-func (model Model) BuildRoleLinks(rm rbac.RoleManager) error {
+func (model AssertionModel) BuildRoleLinks(rm rbac.RoleManager) error {
 	for _, ast := range model["g"] {
 		err := ast.buildRoleLinks(rm)
 		if err != nil {
@@ -120,7 +120,7 @@ func (model Model) BuildRoleLinks(rm rbac.RoleManager) error {
 }
 
 // PrintPolicy prints the policy to log.
-func (model Model) PrintPolicy() {
+func (model AssertionModel) PrintPolicy() {
 	log.LogPrint("Policy:")
 	for key, ast := range model["p"] {
 		log.LogPrint(key, ": ", ast.Value, ": ", ast.Policy)
@@ -132,7 +132,7 @@ func (model Model) PrintPolicy() {
 }
 
 // ClearPolicy clears all current policy.
-func (model Model) ClearPolicy() {
+func (model AssertionModel) ClearPolicy() {
 	for _, ast := range model["p"] {
 		ast.Policy = NewPolicy()
 	}
@@ -143,12 +143,12 @@ func (model Model) ClearPolicy() {
 }
 
 // GetPolicy gets all rules in a policy.
-func (model Model) GetPolicy(sec string, ptype string) [][]string {
+func (model AssertionModel) GetPolicy(sec string, ptype string) [][]string {
 	return model[sec][ptype].Policy.GetRules()
 }
 
 // GetFilteredPolicy gets rules based on field filters from a policy.
-func (model Model) GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) [][]string {
+func (model AssertionModel) GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) [][]string {
 	res := [][]string{}
 
 	policy := model[sec][ptype].Policy
@@ -174,7 +174,7 @@ func (model Model) GetFilteredPolicy(sec string, ptype string, fieldIndex int, f
 
 // TODO can be optimized (use sqlite db) - but this is MODEL package, not ENFORCER (...?)
 // HasPolicy determines whether a model has the specified policy rule.
-func (model Model) HasPolicy(sec string, ptype string, rule []string) bool {
+func (model AssertionModel) HasPolicy(sec string, ptype string, rule []string) bool {
 	policy := model[sec][ptype].Policy
 
 	for policy.Begin(); policy.Next(); {
@@ -189,7 +189,7 @@ func (model Model) HasPolicy(sec string, ptype string, rule []string) bool {
 }
 
 // AddPolicy adds a policy rule to the model.
-func (model Model) AddPolicy(sec string, ptype string, rule []string) (bool, int) {
+func (model AssertionModel) AddPolicy(sec string, ptype string, rule []string) (bool, int) {
 	if !model.HasPolicy(sec, ptype, rule) {
 		ruleId := model[sec][ptype].Policy.Put(rule)
 
@@ -199,7 +199,7 @@ func (model Model) AddPolicy(sec string, ptype string, rule []string) (bool, int
 }
 
 // RemovePolicy removes a policy rule from the model.
-func (model Model) RemovePolicy(sec string, ptype string, rule []string) (bool, int) {
+func (model AssertionModel) RemovePolicy(sec string, ptype string, rule []string) (bool, int) {
 	policy := model[sec][ptype].Policy
 
 	for policy.Begin(); policy.Next(); {
@@ -216,7 +216,7 @@ func (model Model) RemovePolicy(sec string, ptype string, rule []string) (bool, 
 }
 
 // RemoveFilteredPolicy removes policy rules based on field filters from the model.
-func (model Model) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) (bool, []int) {
+func (model AssertionModel) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) (bool, []int) {
 	foundIndexes := []int{}
 	res := false
 
@@ -248,7 +248,7 @@ func (model Model) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int
 }
 
 // GetValuesForFieldInPolicy gets all values for a field for all rules in a policy, duplicated values are removed.
-func (model Model) GetValuesForFieldInPolicy(sec string, ptype string, fieldIndex int) []string {
+func (model AssertionModel) GetValuesForFieldInPolicy(sec string, ptype string, fieldIndex int) []string {
 	values := []string{}
 
 	policy := model[sec][ptype].Policy
@@ -265,7 +265,7 @@ func (model Model) GetValuesForFieldInPolicy(sec string, ptype string, fieldInde
 }
 
 // GetValuesForFieldInPolicyAllTypes gets all values for a field for all rules in a policy of all ptypes, duplicated values are removed.
-func (model Model) GetValuesForFieldInPolicyAllTypes(sec string, fieldIndex int) []string {
+func (model AssertionModel) GetValuesForFieldInPolicyAllTypes(sec string, fieldIndex int) []string {
 	values := []string{}
 
 	for ptype := range model[sec] {

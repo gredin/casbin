@@ -22,13 +22,15 @@ import (
 
 // GetRolesForUser gets the roles that a user has.
 func (e *Enforcer) GetRolesForUser(name string) ([]string, error) {
-	res, err := e.model["g"]["g"].RM.GetRoles(name)
+	assertion, _ := e.model.GetAssertion("g", "g")
+	res, err := assertion.RM.GetRoles(name)
 	return res, err
 }
 
 // GetUsersForRole gets the users that has a role.
 func (e *Enforcer) GetUsersForRole(name string) ([]string, error) {
-	res, err := e.model["g"]["g"].RM.GetUsers(name)
+	assertion, _ := e.model.GetAssertion("g", "g")
+	res, err := assertion.RM.GetUsers(name)
 	return res, err
 }
 
