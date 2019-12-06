@@ -34,8 +34,7 @@ func LoadPolicyLine(line string, model model.Model) {
 	key := tokens[0]
 	sec := key[:1]
 
-	assertion, _:= model.GetAssertion(sec, key)
-	assertion.Policy.Put(tokens[1:])
+	model.AddPolicy(sec, key, tokens[1:])
 }
 
 // Adapter is the interface for Casbin adapters.

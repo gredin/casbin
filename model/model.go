@@ -29,6 +29,8 @@ type Model interface {
 	AddPolicy(sec string, ptype string, rule []string) (bool, int)
 	BuildRoleLinks(rm rbac.RoleManager) error
 	ClearPolicy()
+	GetAllRules() PolicyIterator
+	FindRules(sqlCondition string) (PolicyIterator, error)
 	GetAssertionMap(key string) (AssertionMap, bool)
 	GetAssertion(sec string, key string) (*Assertion, bool)
 	GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) [][]string
@@ -63,6 +65,15 @@ func loadAssertion(model AssertionModel, cfg config.ConfigInterface, sec string,
 	return model.AddDef(sec, key, value)
 }
 
+func (model AssertionModel) GetAllRules() PolicyIterator {
+	assertionP, _ := model.GetAssertion("p", "p")
+
+	return NewCompleteIterator(assertionP.Policy)
+}
+
+func (model AssertionModel) FindRules(sqlCondition string) (PolicyIterator, error) {
+	return model.GetAllRules(), nil // TODO
+}
 
 func (model AssertionModel) GetAssertionMap(key string) (AssertionMap, bool) {
 	assertionMap, ok := model[key]

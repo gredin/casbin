@@ -9,23 +9,13 @@ import (
 )
 
 /* TODO initialize
+p, ok := e.model.GetAssertion("p", "p")
+if ok && p.Policy != nil && p.Policy.Len() > 0 { // TODO explain it is useful for SetModel(...)
+	err = e.updateDB()
 
-if e.ruleDB != nil {
-		e.ruleDB.Close() // TODO handle error?
-	}
-	ruleDB, err := e.createDB()
-	if err != nil {
-		return err
-	}
-	e.ruleDB = ruleDB
-
-	p, ok := e.model.GetAssertion("p", "p")
-	if ok && p.Policy != nil && p.Policy.Len() > 0 { // TODO explain it is useful for SetModel(...)
-		err = e.updateDB()
-
-		return err
-	}
- */
+	return err
+}
+*/
 
 /*
 func (e *Enforcer) LoadPolicy() error {
@@ -37,42 +27,50 @@ const (
 	SqliteMaxParameters = 999
 )
 
-type ModelDB struct { // TODO name "modeldb"
+type ModelDB struct {
+	// TODO name "modeldb"
 	assertionModel AssertionModel
 	ruleDB         *sql.DB
 }
 
-func NewModelDBFromFile(path string) (ModelDB, error) { // TODO name "modeldb"
+func NewModelDBFromFile(path string) (*ModelDB, error) { // TODO name "modeldb"
 	assertionModel, err := NewAssertionModelFromFile(path)
 	if err != nil {
-		return ModelDB{}, err
+		return nil, err
 	}
 
 	model := ModelDB{assertionModel: assertionModel}
 
-	ruleDB, err := model.createRuleDB()
+	err = model.initializeRuleDB()
 	if err != nil {
-		return ModelDB{}, err
+		return nil, err
 	}
 
-	model.ruleDB = ruleDB
-
-	return model, nil
+	return &model, nil
 }
 
-func (model ModelDB) GetAssertionMap(key string) (AssertionMap, bool) {
+func (model *ModelDB) GetAssertionMap(key string) (AssertionMap, bool) {
 	return model.assertionModel.GetAssertionMap(key)
 }
 
-func (model ModelDB) GetAssertion(sec string, key string) (*Assertion, bool) {
+func (model *ModelDB) GetAssertion(sec string, key string) (*Assertion, bool) {
 	return model.assertionModel.GetAssertion(sec, key)
 }
 
-func (model ModelDB) AddDef(sec string, key string, value string) bool {
-	return model.assertionModel.AddDef(sec, key, value)
+func (model *ModelDB) AddDef(sec string, key string, value string) bool {
+	result := model.assertionModel.AddDef(sec, key, value)
+
+	if sec == "p" { // TODO  && key == "p" (only one "p" supported for now)
+		err := model.initializeRuleDB()
+		if err != nil {
+			// TODO
+		}
+	}
+
+	return result
 }
 
-func (model ModelDB) AddPolicy(sec string, ptype string, rule []string) (bool, int) {
+func (model *ModelDB) AddPolicy(sec string, ptype string, rule []string) (bool, int) {
 	ruleAdded, ruleId := model.assertionModel.AddPolicy(sec, ptype, rule)
 	if !ruleAdded {
 		return ruleAdded, -1 // TODO -1?
@@ -91,24 +89,22 @@ func (model ModelDB) AddPolicy(sec string, ptype string, rule []string) (bool, i
 	return ruleAdded, ruleId
 }
 
-func (model ModelDB) BuildRoleLinks(rm rbac.RoleManager) error {
+func (model *ModelDB) BuildRoleLinks(rm rbac.RoleManager) error {
 	return model.assertionModel.BuildRoleLinks(rm)
 }
 
-func (model ModelDB) ClearPolicy() {
+func (model *ModelDB) ClearPolicy() {
 	model.clearRuleDB() // TODO handle error
 	model.assertionModel.ClearPolicy()
 }
 
-func (model ModelDB) GetAllRules() (*[]int, bool) {
-	assertionP := model.assertionModel.GetAssertion("p", "p")
+func (model *ModelDB) GetAllRules() PolicyIterator {
+	assertionP, _ := model.assertionModel.GetAssertion("p", "p")
 
-	assertionP.Policy.rules.Iterator()
-
-	// TODO
+	return NewCompleteIterator(assertionP.Policy)
 }
 
-func (model ModelDB) FindRules(sqlCondition string) (*[]int, error) {
+func (model *ModelDB) FindRules(sqlCondition string) (PolicyIterator, error) {
 	sqlQuery := fmt.Sprintf("SELECT id FROM %s WHERE %s", RuleTableName, sqlCondition)
 
 	rows, err := model.ruleDB.Query(sqlQuery)
@@ -132,51 +128,63 @@ func (model ModelDB) FindRules(sqlCondition string) (*[]int, error) {
 		return nil, err
 	}
 
-	return &ruleIds, nil
+	assertionP, _ := model.assertionModel.GetAssertion("p", "p")
+
+	return NewPartialIterator(&ruleIds, assertionP.Policy), nil
 }
 
-func (model ModelDB) GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) [][]string {
+func (model *ModelDB) GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) [][]string {
 	return model.assertionModel.GetFilteredPolicy(sec, ptype, fieldIndex, fieldValues...)
 }
 
-func (model ModelDB) GetPolicy(sec string, ptype string) [][]string {
+func (model *ModelDB) GetPolicy(sec string, ptype string) [][]string {
 	return model.assertionModel.GetPolicy(sec, ptype)
 }
 
-func (model ModelDB) GetValuesForFieldInPolicy(sec string, ptype string, fieldIndex int) []string {
+func (model *ModelDB) GetValuesForFieldInPolicy(sec string, ptype string, fieldIndex int) []string {
 	return model.assertionModel.GetValuesForFieldInPolicy(sec, ptype, fieldIndex)
 }
 
-func (model ModelDB) GetValuesForFieldInPolicyAllTypes(sec string, fieldIndex int) []string {
+func (model *ModelDB) GetValuesForFieldInPolicyAllTypes(sec string, fieldIndex int) []string {
 	return model.assertionModel.GetValuesForFieldInPolicyAllTypes(sec, fieldIndex)
 }
 
-func (model ModelDB) HasPolicy(sec string, ptype string, rule []string) bool {
+func (model *ModelDB) HasPolicy(sec string, ptype string, rule []string) bool {
+	// TODO use DB
 	return model.assertionModel.HasPolicy(sec, ptype, rule)
 }
 
-func (model ModelDB) LoadModel(path string) error {
-	return model.assertionModel.LoadModel(path)
+func (model *ModelDB) LoadModel(path string) error {
+	err := model.assertionModel.LoadModel(path)
+	if err != nil {
+		return err
+	}
+
+	return model.initializeRuleDB()
 }
 
-func (model ModelDB) LoadModelFromText(text string) error {
-	return model.assertionModel.LoadModelFromText(text)
+func (model *ModelDB) LoadModelFromText(text string) error {
+	err := model.assertionModel.LoadModelFromText(text)
+	if err != nil {
+		return err
+	}
+
+	return model.initializeRuleDB()
 }
 
-func (model ModelDB) PrintModel() {
+func (model *ModelDB) PrintModel() {
 	model.assertionModel.PrintModel()
 }
 
-func (model ModelDB) PrintPolicy() {
+func (model *ModelDB) PrintPolicy() {
 	model.assertionModel.PrintPolicy()
 }
 
-func (model ModelDB) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) (bool, []int) {
+func (model *ModelDB) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) (bool, []int) {
 	ruleRemoved, ruleIds := model.assertionModel.RemoveFilteredPolicy(sec, ptype, fieldIndex, fieldValues...)
 	if !ruleRemoved {
 		return ruleRemoved, []int{}
 	}
-
 
 	if sec == "p" {
 		// TODO db does not support "ptype"
@@ -191,7 +199,7 @@ func (model ModelDB) RemoveFilteredPolicy(sec string, ptype string, fieldIndex i
 	return ruleRemoved, ruleIds
 }
 
-func (model ModelDB) RemovePolicy(sec string, ptype string, rule []string) (bool, int) {
+func (model *ModelDB) RemovePolicy(sec string, ptype string, rule []string) (bool, int) {
 	ruleRemoved, ruleId := model.assertionModel.RemovePolicy(sec, ptype, rule)
 	if !ruleRemoved {
 		return ruleRemoved, -1 // TODO -1?
@@ -210,7 +218,22 @@ func (model ModelDB) RemovePolicy(sec string, ptype string, rule []string) (bool
 	return ruleRemoved, ruleId
 }
 
-func (model ModelDB) createRuleDB() (*sql.DB, error) {
+func (model *ModelDB) initializeRuleDB() error {
+	if model.ruleDB != nil {
+		model.ruleDB.Close() // TODO handle error?
+	}
+
+	ruleDB, err := model.createRuleDB()
+	if err != nil {
+		return err
+	}
+
+	model.ruleDB = ruleDB
+
+	return nil
+}
+
+func (model *ModelDB) createRuleDB() (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		return nil, err
@@ -248,7 +271,7 @@ func (model ModelDB) createRuleDB() (*sql.DB, error) {
 	return db, nil
 }
 
-func (model ModelDB) updateRuleDB() error {
+func (model *ModelDB) updateRuleDB() error {
 	assertionPolicy, _ := model.assertionModel.GetAssertion("p", "p")
 	countTokens := len(assertionPolicy.Tokens)
 	// frequent inserts in order to avoid "too many SQL variables" (default SQLITE_MAX_VARIABLE_NUMBER = 999)
@@ -305,7 +328,7 @@ func (model ModelDB) updateRuleDB() error {
 	return nil
 }
 
-func (model ModelDB) addRuleToDB(ruleId int, rule []string) error {
+func (model *ModelDB) addRuleToDB(ruleId int, rule []string) error {
 	assertionPolicy, _ := model.assertionModel.GetAssertion("p", "p")
 	countTokens := len(assertionPolicy.Tokens)
 	// TODO code duplication
@@ -335,7 +358,7 @@ func (model ModelDB) addRuleToDB(ruleId int, rule []string) error {
 	return nil
 }
 
-func (model ModelDB) deleteRulesFromDB(ruleIds []int) error {
+func (model *ModelDB) deleteRulesFromDB(ruleIds []int) error {
 	countRules := len(ruleIds)
 
 	questionMarks := []string{}
@@ -360,7 +383,7 @@ func (model ModelDB) deleteRulesFromDB(ruleIds []int) error {
 	return nil
 }
 
-func (model ModelDB) deleteRuleFromDB(rule []string) error {
+func (model *ModelDB) deleteRuleFromDB(rule []string) error {
 	// TODO make sure len(rule) = len(token)
 	assertionPolicy, _ := model.assertionModel.GetAssertion("p", "p")
 	countTokens := len(assertionPolicy.Tokens)
@@ -383,7 +406,7 @@ func (model ModelDB) deleteRuleFromDB(rule []string) error {
 	return nil
 }
 
-func (model ModelDB) clearRuleDB() error {
+func (model *ModelDB) clearRuleDB() error {
 	query := fmt.Sprintf("DELETE FROM %s", RuleTableName)
 
 	_, err := model.ruleDB.Exec(query)

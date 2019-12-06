@@ -251,12 +251,7 @@ func (e *Enforcer) LoadModel() error {
 		return err
 	}
 
-	err = e.SetModel(model)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return e.SetModel(model)
 }
 
 // GetModel gets the current model.
@@ -310,7 +305,7 @@ func (e *Enforcer) ClearPolicy() {
 
 // LoadPolicy reloads the policy from file/database.
 func (e *Enforcer) LoadPolicy() error {
-	e.ClearPolicy()
+	e.model.ClearPolicy()
 	if err := e.adapter.LoadPolicy(e.model); err != nil && err.Error() != "invalid file path, file path cannot be empty" {
 		return err
 	}
@@ -328,7 +323,7 @@ func (e *Enforcer) LoadPolicy() error {
 
 // LoadFilteredPolicy reloads a filtered policy from file/database.
 func (e *Enforcer) LoadFilteredPolicy(filter interface{}) error {
-	e.ClearPolicy()
+	e.model.ClearPolicy()
 
 	var filteredAdapter persist.FilteredAdapter
 
@@ -410,7 +405,7 @@ func (e *Enforcer) BuildRoleLinks() error {
 
 	e.evaluator = nil // TODO necessary for reinit overloads
 
-	return err
+	return nil
 }
 
 // enforce use a custom matcher to decides whether a "subject" can access a "object" with the operation "action", input parameters are usually: (matcher, sub, obj, act), use model matcher by default when matcher is "".
@@ -478,13 +473,15 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 			// TODO
 		}
 
-		// TODO execute query
-		_ = sqlCondition
-		ruleIds := []int{}
+		ruleIterator, err := e.model.FindRules(sqlCondition)
+		countRules := ruleIterator.Len()
+		if err != nil {
+			// TODO
+		}
 
-		policyEffects = make([]effect.Effect, len(ruleIds)+1)
-		matcherResults = make([]float64, len(ruleIds)+1)
-		policyEffects[len(ruleIds)] = effect.Indeterminate // TODO explain why
+		policyEffects = make([]effect.Effect, countRules+1)
+		matcherResults = make([]float64, countRules+1)
+		policyEffects[countRules] = effect.Indeterminate // TODO explain why
 
 		effectTokenIndex := -1
 		for j, token := range pTokens {
@@ -496,11 +493,15 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 
 		vars := flatRequest
 
-		for i, ruleId := range ruleIds {
-			pvals, ok := assertionPolicy.Policy.Get(ruleId)
-			if !ok {
+		//for i, ruleId := range ruleIds {
+		i := -1
+		for ruleIterator.Begin(); ruleIterator.Next(); {
+			i++
+			pvals, _ := ruleIterator.Get()
+			//pvals, ok := assertionPolicy.Policy.Get(ruleId)
+			//if !ok {
 				// TODO ??!! (consistency issue between DB and model["p"]["p"].Policy)
-			}
+			//}
 
 			// log.LogPrint("Policy Rule: ", pvals)
 			if len(pvals) != pTokensLen {
