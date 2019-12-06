@@ -23,7 +23,7 @@ import (
 )
 
 func TestKeyMatchModelInMemory(t *testing.T) {
-	m := model.NewModel()
+	m := model.NewAssertionModel()
 	m.AddDef("r", "r", "sub, obj, act")
 	m.AddDef("p", "p", "sub, obj, act")
 	m.AddDef("e", "e", "some(where (p.eft == allow))")
@@ -57,7 +57,7 @@ func TestKeyMatchModelInMemory(t *testing.T) {
 
 	e, _ = NewEnforcer(m)
 	a.LoadPolicy(e.GetModel())
-	e.updateDB() // TODO necessary a.LoadPolicy(model) does not trigger the DB update
+	// TODO e.updateDB() // TODO necessary a.LoadPolicy(model) does not trigger the DB update
 
 	testEnforce(t, e, "alice", "/alice_data/resource1", "GET", true)
 	testEnforce(t, e, "alice", "/alice_data/resource1", "POST", true)
@@ -83,7 +83,7 @@ func TestKeyMatchModelInMemory(t *testing.T) {
 }
 
 func TestKeyMatchModelInMemoryDeny(t *testing.T) {
-	m := model.NewModel()
+	m := model.NewAssertionModel()
 	m.AddDef("r", "r", "sub, obj, act")
 	m.AddDef("p", "p", "sub, obj, act")
 	m.AddDef("e", "e", "!some(where (p.eft == deny))")
@@ -97,7 +97,7 @@ func TestKeyMatchModelInMemoryDeny(t *testing.T) {
 }
 
 func TestRBACModelInMemoryIndeterminate(t *testing.T) {
-	m := model.NewModel()
+	m := model.NewAssertionModel()
 	m.AddDef("r", "r", "sub, obj, act")
 	m.AddDef("p", "p", "sub, obj, act")
 	m.AddDef("g", "g", "_, _")
@@ -112,7 +112,7 @@ func TestRBACModelInMemoryIndeterminate(t *testing.T) {
 }
 
 func TestRBACModelInMemory(t *testing.T) {
-	m := model.NewModel()
+	m := model.NewAssertionModel()
 	m.AddDef("r", "r", "sub, obj, act")
 	m.AddDef("p", "p", "sub, obj, act")
 	m.AddDef("g", "g", "_, _")
@@ -155,7 +155,7 @@ e = some(where (p.eft == allow))
 [matchers]
 m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
 `
-	m, _ := model.NewModelFromString(text)
+	m, _ := model.NewAssertionModelFromString(text)
 	// The above is the same as:
 	// m := NewModel()
 	// m.LoadModelFromText(text)
@@ -179,7 +179,7 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
 }
 
 func TestNotUsedRBACModelInMemory(t *testing.T) {
-	m := model.NewModel()
+	m := model.NewAssertionModel()
 	m.AddDef("r", "r", "sub, obj, act")
 	m.AddDef("p", "p", "sub, obj, act")
 	m.AddDef("g", "g", "_, _")
@@ -408,7 +408,7 @@ func TestSetAdapterFromFile(t *testing.T) {
 func TestInitEmpty(t *testing.T) {
 	e, _ := NewEnforcer()
 
-	m := model.NewModel()
+	m := model.NewAssertionModel()
 	m.AddDef("r", "r", "sub, obj, act")
 	m.AddDef("p", "p", "sub, obj, act")
 	m.AddDef("e", "e", "some(where (p.eft == allow))")

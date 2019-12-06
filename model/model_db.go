@@ -8,6 +8,30 @@ import (
 	"strings"
 )
 
+/* TODO initialize
+
+if e.ruleDB != nil {
+		e.ruleDB.Close() // TODO handle error?
+	}
+	ruleDB, err := e.createDB()
+	if err != nil {
+		return err
+	}
+	e.ruleDB = ruleDB
+
+	p, ok := e.model.GetAssertion("p", "p")
+	if ok && p.Policy != nil && p.Policy.Len() > 0 { // TODO explain it is useful for SetModel(...)
+		err = e.updateDB()
+
+		return err
+	}
+ */
+
+/*
+func (e *Enforcer) LoadPolicy() error {
+=> err := e.updateDB()
+ */
+
 const (
 	RuleTableName       = "rule"
 	SqliteMaxParameters = 999
@@ -76,6 +100,41 @@ func (model ModelDB) ClearPolicy() {
 	model.assertionModel.ClearPolicy()
 }
 
+func (model ModelDB) GetAllRules() (*[]int, bool) {
+	assertionP := model.assertionModel.GetAssertion("p", "p")
+
+	assertionP.Policy.rules.Iterator()
+
+	// TODO
+}
+
+func (model ModelDB) FindRules(sqlCondition string) (*[]int, error) {
+	sqlQuery := fmt.Sprintf("SELECT id FROM %s WHERE %s", RuleTableName, sqlCondition)
+
+	rows, err := model.ruleDB.Query(sqlQuery)
+	if err != nil {
+		// TODO
+	}
+	defer rows.Close()
+
+	ruleIds := []int{}
+	var id int
+	for rows.Next() {
+		err = rows.Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+
+		ruleIds = append(ruleIds, id)
+	}
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return &ruleIds, nil
+}
+
 func (model ModelDB) GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) [][]string {
 	return model.assertionModel.GetFilteredPolicy(sec, ptype, fieldIndex, fieldValues...)
 }
@@ -113,7 +172,23 @@ func (model ModelDB) PrintPolicy() {
 }
 
 func (model ModelDB) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) (bool, []int) {
-	return model.assertionModel.RemoveFilteredPolicy(sec, ptype, fieldIndex, fieldValues...)
+	ruleRemoved, ruleIds := model.assertionModel.RemoveFilteredPolicy(sec, ptype, fieldIndex, fieldValues...)
+	if !ruleRemoved {
+		return ruleRemoved, []int{}
+	}
+
+
+	if sec == "p" {
+		// TODO db does not support "ptype"
+		// TODO but "Currently only single policy definition p is supported. p2 is yet not supported." https://casbin.org/docs/en/syntax-for-models#policy-definition
+		err := model.deleteRulesFromDB(ruleIds)
+		if err != nil {
+			// TODO not good because adapter policy removal is not called
+			return ruleRemoved, ruleIds // TODO ?
+		}
+	}
+
+	return ruleRemoved, ruleIds
 }
 
 func (model ModelDB) RemovePolicy(sec string, ptype string, rule []string) (bool, int) {
@@ -253,7 +328,7 @@ func (model ModelDB) addRuleToDB(ruleId int, rule []string) error {
 		values[i+1] = v
 	}
 
-	if _, err := e.ruleDB.Exec(query, values...); err != nil {
+	if _, err := model.ruleDB.Exec(query, values...); err != nil {
 		return err
 	}
 

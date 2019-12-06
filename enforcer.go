@@ -15,7 +15,6 @@
 package casbin
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/casbin/casbin/v2/util"
@@ -139,7 +138,7 @@ func (e *Enforcer) InitWithFile(modelPath string, policyPath string) error {
 
 // InitWithAdapter initializes an enforcer with a database adapter.
 func (e *Enforcer) InitWithAdapter(modelPath string, adapter persist.Adapter) error {
-	m, err := model.NewModelFromFile(modelPath)
+	m, err := model.NewModelDBFromFile(modelPath)
 	if err != nil {
 		return err
 	}
@@ -183,22 +182,6 @@ func (e *Enforcer) initialize() error {
 	e.enabled = true
 	e.autoSave = true
 	e.autoBuildRoleLinks = true
-
-	if e.ruleDB != nil {
-		e.ruleDB.Close() // TODO handle error?
-	}
-	ruleDB, err := e.createDB()
-	if err != nil {
-		return err
-	}
-	e.ruleDB = ruleDB
-
-	p, ok := e.model.GetAssertion("p", "p")
-	if ok && p.Policy != nil && p.Policy.Len() > 0 { // TODO explain it is useful for SetModel(...)
-		err = e.updateDB()
-
-		return err
-	}
 
 	e.initializeEvaluator() // TODO ignore error because of later AddFunction(...)
 
@@ -263,7 +246,7 @@ func (e *Enforcer) initializeEvaluator() error {
 // LoadModel reloads the model from the model CONF file.
 // Because the policy is attached to a model, so the policy is invalidated and needs to be reloaded by calling LoadPolicy().
 func (e *Enforcer) LoadModel() error {
-	model, err := model.NewModelFromFile(e.modelPath) // TODO
+	model, err := model.NewModelDBFromFile(e.modelPath)
 	if err != nil {
 		return err
 	}
@@ -323,8 +306,6 @@ func (e *Enforcer) SetEffector(eft effect.Effector) {
 // ClearPolicy clears all policy.
 func (e *Enforcer) ClearPolicy() {
 	e.model.ClearPolicy()
-
-	e.ClearDB() // TODO handle error
 }
 
 // LoadPolicy reloads the policy from file/database.
@@ -342,9 +323,7 @@ func (e *Enforcer) LoadPolicy() error {
 		}
 	}
 
-	err := e.updateDB()
-
-	return err
+	return nil
 }
 
 // LoadFilteredPolicy reloads a filtered policy from file/database.
@@ -499,26 +478,9 @@ func (e *Enforcer) enforce(matcher string, rvals ...interface{}) (bool, error) {
 			// TODO
 		}
 
+		// TODO execute query
+		_ = sqlCondition
 		ruleIds := []int{}
-		rows, err := e.ruleDB.Query(
-			fmt.Sprintf("SELECT id FROM %s WHERE %s", RuleTableName, sqlCondition))
-		if err != nil {
-			// TODO
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id int
-			err = rows.Scan(&id)
-			if err != nil {
-				// TODO
-			}
-
-			ruleIds = append(ruleIds, id)
-		}
-		err = rows.Err()
-		if err != nil {
-			// TODO
-		}
 
 		policyEffects = make([]effect.Effect, len(ruleIds)+1)
 		matcherResults = make([]float64, len(ruleIds)+1)
