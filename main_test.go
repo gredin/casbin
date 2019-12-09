@@ -3,6 +3,7 @@ package casbin
 import (
 	"encoding/json"
 	_ "errors"
+	"fmt"
 	"github.com/casbin/casbin/v2/util"
 	_ "github.com/google/cel-go/common/operators"
 	_ "github.com/jeremywohl/flatten"
@@ -10,11 +11,15 @@ import (
 	"strconv"
 	"testing"
 	"time"
+	"github.com/segmentio/fasthash/fnv1a"
 )
 
 
 
 func __Test_Main(t *testing.T) {
+	h1 := fnv1a.HashString64("Hello World!")
+	fmt.Println("FNV-1a hash of 'Hello World!':", h1)
+
 
 	var v bool
 	println(v)

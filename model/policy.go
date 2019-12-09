@@ -19,12 +19,15 @@ import (
 	"github.com/casbin/casbin/v2/rbac"
 	"github.com/casbin/casbin/v2/util"
 	"github.com/emirpasic/gods/maps/linkedhashmap"
+	"github.com/segmentio/fasthash/fnv1a"
+	"strings"
 )
 
 type Policy struct {
 	rules         *linkedhashmap.Map
 	autoincrement int
 	iterator      linkedhashmap.Iterator
+	ruleHashes    map[uint32]int
 }
 
 func NewPolicy() *Policy {
@@ -34,6 +37,7 @@ func NewPolicy() *Policy {
 		rules:         rules,
 		autoincrement: 0,
 		iterator:      rules.Iterator(),
+		ruleHashes:    map[uint32]int{},
 	}
 }
 
@@ -80,9 +84,30 @@ func (p *Policy) GetNext() (int, []string) {
 func (p *Policy) Put(rule []string) int {
 	i := p.autoincrement
 	p.rules.Put(i, rule)
+	p.ruleHashes[hashSerializeRule(rule)] = i
 	p.autoincrement++
 
 	return i
+}
+
+func (p *Policy) HasRule(rule []string) bool {
+	_, ok := p.ruleHashes[hashSerializeRule(rule)]
+
+	return ok
+}
+
+func (p *Policy) RemoveRule(rule []string) (bool, int) {
+	ruleHash := hashSerializeRule(rule)
+	i, ok := p.ruleHashes[ruleHash]
+
+	if !ok {
+		return false, -1
+	}
+
+	delete(p.ruleHashes, ruleHash)
+	p.rules.Remove(i)
+
+	return true, i
 }
 
 func (p *Policy) Get(ruleId int) ([]string, bool) {
@@ -104,6 +129,11 @@ func (p *Policy) Len() int {
 }
 
 func (p *Policy) Remove(i int) {
+	rule, ok := p.Get(i)
+	if ok {
+		delete(p.ruleHashes, hashSerializeRule(rule))
+	}
+
 	p.rules.Remove(i)
 }
 
@@ -175,48 +205,23 @@ func (model AssertionModel) GetFilteredPolicy(sec string, ptype string, fieldInd
 // TODO can be optimized (use sqlite db) - but this is MODEL package, not ENFORCER (...?)
 // HasPolicy determines whether a model has the specified policy rule.
 func (model AssertionModel) HasPolicy(sec string, ptype string, rule []string) bool {
-
-	// TODO optimize
-	// rule => hash/serialize => store in map[string]bool
-	// (delete / clear => reinit this map[string]bool)
-
-	policy := model[sec][ptype].Policy
-
-	for policy.Begin(); policy.Next(); {
-		_, r := policy.GetNext()
-
-		if util.ArrayEquals(rule, r) {
-			return true
-		}
-	}
-
-	return false
+	return model[sec][ptype].Policy.HasRule(rule)
 }
 
 // AddPolicy adds a policy rule to the model.
 func (model AssertionModel) AddPolicy(sec string, ptype string, rule []string) (bool, int) {
 	if model.HasPolicy(sec, ptype, rule) {
-		return false, 0
+		return false, -1
 	}
 
-	return true, model.addPolicyWithoutDuplicateCheck(sec, ptype, rule)
+	ruleId := model[sec][ptype].Policy.Put(rule)
+
+	return true, ruleId
 }
 
 // RemovePolicy removes a policy rule from the model.
 func (model AssertionModel) RemovePolicy(sec string, ptype string, rule []string) (bool, int) {
-	policy := model[sec][ptype].Policy
-
-	for policy.Begin(); policy.Next(); {
-		i, r := policy.GetNext()
-
-		if util.ArrayEquals(rule, r) {
-			policy.Remove(i)
-
-			return true, i
-		}
-	}
-
-	return false, 0
+	return model[sec][ptype].Policy.RemoveRule(rule)
 }
 
 // RemoveFilteredPolicy removes policy rules based on field filters from the model.
@@ -281,6 +286,6 @@ func (model AssertionModel) GetValuesForFieldInPolicyAllTypes(sec string, fieldI
 	return values
 }
 
-func (model AssertionModel) addPolicyWithoutDuplicateCheck(sec string, ptype string, rule []string) int {
-	return model[sec][ptype].Policy.Put(rule)
+func hashSerializeRule(rule []string) uint32 {
+	return fnv1a.HashString32(strings.Join(rule, " "))
 }

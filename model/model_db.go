@@ -80,21 +80,20 @@ func (model *ModelDB) AddPolicy(sec string, ptype string, rule []string) (bool, 
 }
 
 func (model *ModelDB) addPolicyRule(sec string, ptype string, rule []string) (bool, int) {
-	if model.HasPolicy(sec, ptype, rule) {
-		return false, 0
+	ruleAdded, ruleId := model.assertionModel.AddPolicy(sec, ptype, rule)
+	if !ruleAdded {
+		return false, -1
 	}
-
-	ruleId := model.assertionModel.addPolicyWithoutDuplicateCheck(sec, ptype, rule)
 
 	// TODO db does not support "ptype"
 	// TODO but "Currently only single policy definition p is supported. p2 is yet not supported." https://casbin.org/docs/en/syntax-for-models#policy-definition
 	err := model.addRuleToDB(ruleId, rule)
 	if err != nil {
 		// TODO not good because adapter policy addition is not called
-		return false, ruleId // TODO return false?
+		return ruleAdded, ruleId // TODO return false?
 	}
 
-	return true, ruleId
+	return ruleAdded, ruleId
 }
 
 func (model *ModelDB) BuildRoleLinks(rm rbac.RoleManager) error {
@@ -158,47 +157,7 @@ func (model *ModelDB) GetValuesForFieldInPolicyAllTypes(sec string, fieldIndex i
 }
 
 func (model *ModelDB) HasPolicy(sec string, ptype string, rule []string) bool {
-	if sec == "p" { // TODO? && ptype == "p"
-		return model.hasPolicyRule(rule)
-	}
-
 	return model.assertionModel.HasPolicy(sec, ptype, rule)
-}
-
-func (model *ModelDB) hasPolicyRule(rule []string) bool {
-	assertionPolicy, _ := model.assertionModel.GetAssertion("p", "p")
-
-	countTokens := len(assertionPolicy.Tokens)
-	conditions := make([]string, countTokens)
-	values := make([]interface{}, countTokens)
-
-	for i, token := range assertionPolicy.Tokens {
-		conditions[i] = fmt.Sprintf("%s = ?", token)
-		values[i] = rule[i]
-	}
-
-	sqlQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s",
-		RuleTableName, strings.Join(conditions, " AND "))
-
-	rows, err := model.ruleDB.Query(sqlQuery, values...)
-	if err != nil {
-		// TODO
-	}
-	defer rows.Close()
-
-	count := 0
-	for rows.Next() {
-		err = rows.Scan(&count)
-		if err != nil {
-			// TODO
-		}
-	}
-	err = rows.Err()
-	if err != nil {
-		// TODO
-	}
-
-	return count >= 1
 }
 
 func (model *ModelDB) LoadModel(path string) error {
@@ -249,7 +208,7 @@ func (model *ModelDB) RemoveFilteredPolicy(sec string, ptype string, fieldIndex 
 func (model *ModelDB) RemovePolicy(sec string, ptype string, rule []string) (bool, int) {
 	ruleRemoved, ruleId := model.assertionModel.RemovePolicy(sec, ptype, rule)
 	if !ruleRemoved {
-		return ruleRemoved, -1 // TODO -1?
+		return false, -1
 	}
 
 	if sec == "p" {

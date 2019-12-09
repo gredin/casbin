@@ -10,6 +10,7 @@ require (
 	github.com/jeremywohl/flatten v1.0.1
 	github.com/mattn/go-sqlite3 v1.10.0
 	github.com/ompluscator/dynamic-struct v1.2.0
+	github.com/segmentio/fasthash v1.0.1
 	google.golang.org/genproto v0.0.0-20191108220845-16a3f7862a1a
 )
 
