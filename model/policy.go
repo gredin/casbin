@@ -175,6 +175,11 @@ func (model AssertionModel) GetFilteredPolicy(sec string, ptype string, fieldInd
 // TODO can be optimized (use sqlite db) - but this is MODEL package, not ENFORCER (...?)
 // HasPolicy determines whether a model has the specified policy rule.
 func (model AssertionModel) HasPolicy(sec string, ptype string, rule []string) bool {
+
+	// TODO optimize
+	// rule => hash/serialize => store in map[string]bool
+	// (delete / clear => reinit this map[string]bool)
+
 	policy := model[sec][ptype].Policy
 
 	for policy.Begin(); policy.Next(); {
@@ -190,12 +195,11 @@ func (model AssertionModel) HasPolicy(sec string, ptype string, rule []string) b
 
 // AddPolicy adds a policy rule to the model.
 func (model AssertionModel) AddPolicy(sec string, ptype string, rule []string) (bool, int) {
-	if !model.HasPolicy(sec, ptype, rule) {
-		ruleId := model[sec][ptype].Policy.Put(rule)
-
-		return true, ruleId
+	if model.HasPolicy(sec, ptype, rule) {
+		return false, 0
 	}
-	return false, 0
+
+	return true, model.addPolicyWithoutDuplicateCheck(sec, ptype, rule)
 }
 
 // RemovePolicy removes a policy rule from the model.
@@ -275,4 +279,8 @@ func (model AssertionModel) GetValuesForFieldInPolicyAllTypes(sec string, fieldI
 	util.ArrayRemoveDuplicates(&values)
 
 	return values
+}
+
+func (model AssertionModel) addPolicyWithoutDuplicateCheck(sec string, ptype string, rule []string) int {
+	return model[sec][ptype].Policy.Put(rule)
 }

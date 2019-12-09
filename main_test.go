@@ -16,6 +16,9 @@ import (
 
 func __Test_Main(t *testing.T) {
 
+	var v bool
+	println(v)
+
 	m := map[string]map[string]string{
 		"p": {
 			"p2": "a",

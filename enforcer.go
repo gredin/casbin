@@ -24,7 +24,6 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/interpreter/functions"
 	"github.com/google/cel-go/parser"
-	_ "github.com/mattn/go-sqlite3"
 	"strings"
 
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
@@ -189,8 +188,8 @@ func (e *Enforcer) initialize() error {
 }
 
 func (e *Enforcer) initializeEvaluator() error {
-	m, _ := e.model.GetAssertion("m", "m")
-	rawExpr := m.Value // TODO might be empty "" - might be provided by EnforceWithMatcher(matcher string)
+	assertion, _ := e.model.GetAssertion("m", "m")
+	rawExpr := assertion.Value // TODO might be empty "" - might be provided by EnforceWithMatcher(matcher string)
 
 	parsedExpr, errs := parser.Parse(common.NewTextSource(rawExpr))
 	if len(errs.GetErrors()) != 0 {

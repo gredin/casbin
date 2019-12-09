@@ -66,9 +66,9 @@ func loadAssertion(model AssertionModel, cfg config.ConfigInterface, sec string,
 }
 
 func (model AssertionModel) GetAllRules() PolicyIterator {
-	assertionP, _ := model.GetAssertion("p", "p")
+	assertionPolicy, _ := model.GetAssertion("p", "p")
 
-	return NewCompleteIterator(assertionP.Policy)
+	return NewCompleteIterator(assertionPolicy.Policy)
 }
 
 func (model AssertionModel) FindRules(sqlCondition string) (PolicyIterator, error) {

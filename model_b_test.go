@@ -103,6 +103,10 @@ func BenchmarkRBACModelLarge(b *testing.B) {
 	}
 	// 100000 users.
 	for i := 0; i < 100000; i++ {
+		if i % 1000 == 0 {
+			println(i)
+		}
+
 		e.AddGroupingPolicy(fmt.Sprintf("user%d", i), fmt.Sprintf("group%d", i/10))
 	}
 	e.BuildRoleLinks()

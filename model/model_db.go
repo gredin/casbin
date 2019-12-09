@@ -6,6 +6,7 @@ import (
 	"github.com/casbin/casbin/v2/rbac"
 	"strconv"
 	"strings"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 /* TODO initialize
@@ -71,22 +72,29 @@ func (model *ModelDB) AddDef(sec string, key string, value string) bool {
 }
 
 func (model *ModelDB) AddPolicy(sec string, ptype string, rule []string) (bool, int) {
-	ruleAdded, ruleId := model.assertionModel.AddPolicy(sec, ptype, rule)
-	if !ruleAdded {
-		return ruleAdded, -1 // TODO -1?
+	if sec == "p" { // TODO? && ptype == "p"
+		return model.addPolicyRule(sec, ptype, rule)
 	}
 
-	if sec == "p" {
-		// TODO db does not support "ptype"
-		// TODO but "Currently only single policy definition p is supported. p2 is yet not supported." https://casbin.org/docs/en/syntax-for-models#policy-definition
-		err := model.addRuleToDB(ruleId, rule)
-		if err != nil {
-			// TODO not good because adapter policy addition is not called
-			return ruleAdded, ruleId // TODO return false?
-		}
+	return model.assertionModel.AddPolicy(sec, ptype, rule)
+}
+
+func (model *ModelDB) addPolicyRule(sec string, ptype string, rule []string) (bool, int) {
+	if model.HasPolicy(sec, ptype, rule) {
+		return false, 0
 	}
 
-	return ruleAdded, ruleId
+	ruleId := model.assertionModel.addPolicyWithoutDuplicateCheck(sec, ptype, rule)
+
+	// TODO db does not support "ptype"
+	// TODO but "Currently only single policy definition p is supported. p2 is yet not supported." https://casbin.org/docs/en/syntax-for-models#policy-definition
+	err := model.addRuleToDB(ruleId, rule)
+	if err != nil {
+		// TODO not good because adapter policy addition is not called
+		return false, ruleId // TODO return false?
+	}
+
+	return true, ruleId
 }
 
 func (model *ModelDB) BuildRoleLinks(rm rbac.RoleManager) error {
@@ -99,9 +107,9 @@ func (model *ModelDB) ClearPolicy() {
 }
 
 func (model *ModelDB) GetAllRules() PolicyIterator {
-	assertionP, _ := model.assertionModel.GetAssertion("p", "p")
+	assertionPolicy, _ := model.assertionModel.GetAssertion("p", "p")
 
-	return NewCompleteIterator(assertionP.Policy)
+	return NewCompleteIterator(assertionPolicy.Policy)
 }
 
 func (model *ModelDB) FindRules(sqlCondition string) (PolicyIterator, error) {
@@ -128,9 +136,9 @@ func (model *ModelDB) FindRules(sqlCondition string) (PolicyIterator, error) {
 		return nil, err
 	}
 
-	assertionP, _ := model.assertionModel.GetAssertion("p", "p")
+	assertionPolicy, _ := model.assertionModel.GetAssertion("p", "p")
 
-	return NewPartialIterator(&ruleIds, assertionP.Policy), nil
+	return NewPartialIterator(&ruleIds, assertionPolicy.Policy), nil
 }
 
 func (model *ModelDB) GetFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) [][]string {
@@ -150,8 +158,47 @@ func (model *ModelDB) GetValuesForFieldInPolicyAllTypes(sec string, fieldIndex i
 }
 
 func (model *ModelDB) HasPolicy(sec string, ptype string, rule []string) bool {
-	// TODO use DB
+	if sec == "p" { // TODO? && ptype == "p"
+		return model.hasPolicyRule(rule)
+	}
+
 	return model.assertionModel.HasPolicy(sec, ptype, rule)
+}
+
+func (model *ModelDB) hasPolicyRule(rule []string) bool {
+	assertionPolicy, _ := model.assertionModel.GetAssertion("p", "p")
+
+	countTokens := len(assertionPolicy.Tokens)
+	conditions := make([]string, countTokens)
+	values := make([]interface{}, countTokens)
+
+	for i, token := range assertionPolicy.Tokens {
+		conditions[i] = fmt.Sprintf("%s = ?", token)
+		values[i] = rule[i]
+	}
+
+	sqlQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s",
+		RuleTableName, strings.Join(conditions, " AND "))
+
+	rows, err := model.ruleDB.Query(sqlQuery, values...)
+	if err != nil {
+		// TODO
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		err = rows.Scan(&count)
+		if err != nil {
+			// TODO
+		}
+	}
+	err = rows.Err()
+	if err != nil {
+		// TODO
+	}
+
+	return count >= 1
 }
 
 func (model *ModelDB) LoadModel(path string) error {
